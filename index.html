@@ -59,6 +59,8 @@
         /* Safe Area for iPhones */
         .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
         .safe-pt { padding-top: env(safe-area-inset-top, 20px); }
+        
+        /* Orientation Warning (Optional styling if we wanted a blocking overlay, but text is enough) */
     </style>
 </head>
 <body>
@@ -110,7 +112,7 @@
                             </button>
                             
                             <p class="text-xs text-zinc-500 mt-2 leading-relaxed">
-                                拍攝三張 16:9 照片<br>自動合成垂直膠卷風格
+                                拍攝三張橫式照片<br>自動合成垂直膠卷風格
                             </p>
                         </div>
                     </div>
@@ -120,13 +122,8 @@
         }
 
         function renderCamera() {
-            // Calculate progress bars
-            const bars = [0, 1, 2].map(i => {
-                let cls = 'w-2 bg-white/20'; // default
-                if (i < state.photos.length) cls = 'w-8 bg-white'; // taken
-                if (i === state.photos.length) cls = 'w-8 bg-white/50'; // current
-                return `<div class="h-1.5 rounded-full transition-all duration-300 ${cls}"></div>`;
-            }).join('');
+            const currentCount = state.photos.length + 1;
+            const totalCount = 3;
 
             app.innerHTML = `
                 <div class="fixed inset-0 bg-black flex flex-col animate-fade-in">
@@ -134,24 +131,30 @@
                     <div id="flashOverlay" class="flash-effect"></div>
 
                     <!-- Top Bar -->
-                    <div class="absolute top-0 left-0 right-0 z-20 safe-pt px-6 pt-4 bg-gradient-to-b from-black/80 to-transparent pb-12">
-                        <div class="flex justify-between items-center max-w-md mx-auto">
+                    <div class="absolute top-0 left-0 right-0 z-20 safe-pt px-6 pt-4 bg-gradient-to-b from-black/90 to-transparent pb-16 pointer-events-none">
+                        <div class="flex justify-between items-start max-w-md mx-auto pointer-events-auto">
                             <button onclick="resetApp()" class="text-white/70 hover:text-white p-2 backdrop-blur-md rounded-full bg-black/20">
                                 <i data-lucide="x" class="w-6 h-6"></i>
                             </button>
-                            <div class="flex gap-2">
-                                ${bars}
+                            
+                            <!-- Counter Display -->
+                            <div class="flex flex-col items-center">
+                                <div class="px-4 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-sm font-medium tracking-wider text-white">
+                                    ${currentCount} / ${totalCount}
+                                </div>
+                                ${currentCount === 1 ? '<span class="text-[10px] text-zinc-400 mt-1 opacity-80">請橫持手機拍攝</span>' : ''}
                             </div>
+                            
                             <div class="w-10"></div> <!-- Spacer -->
                         </div>
                     </div>
 
                     <!-- Viewfinder -->
                     <div class="flex-1 relative flex items-center justify-center overflow-hidden bg-black">
-                        <video id="videoElement" autoplay playsinline muted class="absolute w-full h-full object-cover"></video>
+                        <video id="videoElement" autoplay playsinline muted class="absolute w-full h-full object-cover opacity-90"></video>
                         
-                        <!-- Grid Lines -->
-                        <div class="absolute inset-0 pointer-events-none opacity-20">
+                        <!-- Grid Lines (Landscape Aspect) -->
+                        <div class="absolute inset-0 pointer-events-none opacity-30">
                             <div class="w-full h-full flex flex-col">
                                 <div class="flex-1 border-b border-white"></div>
                                 <div class="flex-1 border-b border-white"></div>
@@ -171,10 +174,11 @@
                     </div>
 
                     <!-- Bottom Controls -->
-                    <div class="h-36 bg-black flex items-center justify-center relative z-20 safe-pb">
+                    <div class="h-40 bg-black flex flex-col items-center justify-center relative z-20 safe-pb space-y-4">
                         <button onclick="takePhoto()" class="w-20 h-20 rounded-full border-4 border-white/80 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
                             <div class="w-16 h-16 bg-white rounded-full"></div>
                         </button>
+                        <span class="text-xs text-zinc-500 font-medium tracking-widest uppercase">Shot ${currentCount}</span>
                     </div>
                 </div>
             `;
@@ -208,9 +212,9 @@
                                  <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
                                  <span class="text-sm">正在沖洗照片...</span>
                                </div>`
-                            : `<div class="relative shadow-2xl shadow-black/50 max-w-sm w-full mx-auto animate-slide-up bg-white p-2 pb-8 rounded-sm">
+                            : `<div class="relative shadow-2xl shadow-black/50 max-w-2xl w-full mx-auto animate-slide-up bg-white p-3 pb-8 rounded-sm">
                                  <img src="${state.finalCollage}" alt="Final Collage" class="w-full h-auto block select-none bg-zinc-100" />
-                                 <div class="absolute bottom-2 right-4 text-[10px] text-black/30 font-mono tracking-widest">TRI-PANEL</div>
+                                 <div class="absolute bottom-2 right-4 text-[10px] text-black/30 font-mono tracking-widest">TRI-PANEL • LANDSCAPE</div>
                                </div>`
                         }
                     </div>
@@ -226,13 +230,6 @@
                             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                             重新拍攝
                         </button>
-                        
-                        <div class="flex justify-center mt-2">
-                             <div class="text-[10px] text-zinc-600 flex items-center gap-1.5 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-800">
-                                <i data-lucide="info" class="w-3 h-3"></i>
-                                <span>iOS 用戶請至「檔案」或長按圖片儲存</span>
-                             </div>
-                        </div>
                     </div>
                 </div>
             `;
@@ -248,11 +245,13 @@
 
         async function startCamera() {
             try {
-                // Request 16:9 aspect ratio and back camera
+                // Request 16:9 Landscape ideal
                 const stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        aspectRatio: { ideal: 1.777 } // 16:9
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        aspectRatio: { ideal: 1.7777 } // 16:9
                     },
                     audio: false
                 });
@@ -290,7 +289,7 @@
                 state.step = 'RESULT';
                 renderResult();
             } else {
-                // Re-render camera to show progress bar update
+                // Re-render camera to show counter update
                 renderCamera();
             }
         }
@@ -316,6 +315,7 @@
             }));
 
             // Calculate dimensions
+            // Use largest width found, stack heights
             const maxWidth = Math.max(...images.map(img => img.naturalWidth));
             const totalHeight = images.reduce((acc, img) => acc + img.naturalHeight, 0);
 
@@ -331,6 +331,7 @@
             // Draw images
             let y = 0;
             images.forEach(img => {
+                // Center align if widths differ
                 const x = (maxWidth - img.naturalWidth) / 2;
                 ctx.drawImage(img, x, y);
                 y += img.naturalHeight;
@@ -347,7 +348,7 @@
             const link = document.createElement('a');
             link.href = state.finalCollage;
             const date = new Date().toISOString().slice(0, 10);
-            link.download = `TriPanel_${date}.png`;
+            link.download = `TriPanel_Landscape_${date}.png`;
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
