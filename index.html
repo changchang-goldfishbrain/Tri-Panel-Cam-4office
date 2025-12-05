@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <title>Tri-Grid Native</title>
+    <title>Tri-Grid Inline</title>
     
     <!-- Mobile Web App Config -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -28,11 +28,6 @@
             flex-direction: column;
         }
 
-        /* 隱藏的原生輸入框 */
-        #camera-input {
-            display: none;
-        }
-
         /* 網格容器 */
         #grid-container {
             flex: 1;
@@ -54,24 +49,56 @@
             justify-content: center;
             background-color: #111;
             transition: background-color 0.2s;
-            cursor: pointer;
         }
         .grid-slot:last-child {
             border-bottom: none;
         }
-        .grid-slot:active {
-            background-color: #222;
-        }
 
-        /* 顯示的照片 */
-        .slot-image {
+        /* 嵌入式相機與照片 */
+        .slot-content {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            object-position: center center;
+            object-position: center;
             position: absolute;
             inset: 0;
             z-index: 10;
+        }
+
+        /* 拍攝時的快門按鈕層 */
+        .camera-overlay {
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.1); /* 輕微暗化提升對比 */
+        }
+
+        /* 快門按鈕 */
+        .shutter-btn {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: 4px solid white;
+            background-color: rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .shutter-btn:active {
+            transform: scale(0.95);
+            background-color: rgba(255, 255, 255, 0.8);
+        }
+        .shutter-inner {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background-color: #ff3b30; /* 經典紅點 */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
 
         /* 空狀態圖示 */
@@ -126,36 +153,31 @@
             pointer-events: none;
             box-shadow: none;
         }
-
     </style>
 </head>
 <body>
 
-    <!-- 隱藏的相機輸入 -->
-    <!-- accept="image/*" capture="environment" 強制呼叫後鏡頭 -->
-    <input type="file" id="camera-input" accept="image/*" capture="environment">
-
     <!-- 主網格 -->
     <div id="grid-container">
         <!-- 上 -->
-        <div class="grid-slot" id="slot-0" onclick="triggerCamera(0)">
+        <div class="grid-slot" id="slot-0" onclick="startCamera(0)">
             <div class="empty-state">
-                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Add</span>
+                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Shoot</span>
             </div>
         </div>
         <!-- 中 -->
-        <div class="grid-slot" id="slot-1" onclick="triggerCamera(1)">
+        <div class="grid-slot" id="slot-1" onclick="startCamera(1)">
             <div class="empty-state">
-                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Add</span>
+                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Shoot</span>
             </div>
         </div>
         <!-- 下 -->
-        <div class="grid-slot" id="slot-2" onclick="triggerCamera(2)">
+        <div class="grid-slot" id="slot-2" onclick="startCamera(2)">
             <div class="empty-state">
-                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Add</span>
+                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Shoot</span>
             </div>
         </div>
     </div>
@@ -182,9 +204,10 @@
         lucide.createIcons();
 
         // 狀態
-        let images = [null, null, null]; // 存放 Base64 或 Blob URL
+        let images = [null, null, null]; // 存放 Base64
+        let activeStream = null;
         let activeSlotIndex = -1;
-        const input = document.getElementById('camera-input');
+        
         const slots = [
             document.getElementById('slot-0'),
             document.getElementById('slot-1'),
@@ -193,52 +216,149 @@
         const downloadBtn = document.getElementById('download-btn');
         const statusText = document.getElementById('status-text');
 
-        // 1. 觸發相機
-        function triggerCamera(index) {
+        // 1. 啟動嵌入式相機
+        async function startCamera(index) {
+            // 如果已經有相機在運作，且點擊的是同一格，則忽略 (或可設計為取消)
+            if (activeSlotIndex === index && activeStream) return;
+            
+            // 如果有其他格子正在拍照，先關閉它
+            if (activeStream) {
+                stopCamera();
+            }
+
             activeSlotIndex = index;
-            // 觸發隱藏的 input click
-            input.click(); 
+            const slot = slots[index];
+
+            try {
+                // 創建 Video 元素
+                const video = document.createElement('video');
+                video.autoplay = true;
+                video.playsInline = true;
+                video.muted = true;
+                video.className = 'slot-content'; // object-fit: cover
+                
+                // 請求相機權限 (優先使用後置鏡頭，高清)
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 }, // 請求高解析度
+                        height: { ideal: 1080 }
+                    },
+                    audio: false
+                });
+                
+                activeStream = stream;
+                video.srcObject = stream;
+
+                // 創建快門按鈕覆蓋層
+                const overlay = document.createElement('div');
+                overlay.className = 'camera-overlay';
+                overlay.innerHTML = `
+                    <div class="shutter-btn" onclick="takePhoto(event)">
+                        <div class="shutter-inner"></div>
+                    </div>
+                `;
+
+                // 清空格子並插入相機
+                slot.innerHTML = '';
+                slot.appendChild(video);
+                slot.appendChild(overlay);
+
+            } catch (err) {
+                console.error("相機啟動失敗", err);
+                alert("無法啟動相機，請確認瀏覽器權限 (需要 HTTPS 或 Localhost)");
+                activeSlotIndex = -1;
+            }
         }
 
-        // 2. 監聽照片輸入
-        input.addEventListener('change', (e) => {
-            if (e.target.files && e.target.files[0]) {
-                const file = e.target.files[0];
-                const reader = new FileReader();
-                
-                reader.onload = function(evt) {
-                    const dataUrl = evt.target.result;
-                    
-                    // 儲存數據
-                    images[activeSlotIndex] = dataUrl;
-                    
-                    // 更新 UI
-                    updateSlotUI(activeSlotIndex, dataUrl);
-                    checkCompletion();
-                };
-                
-                reader.readAsDataURL(file);
+        // 2. 停止相機
+        function stopCamera() {
+            if (activeStream) {
+                activeStream.getTracks().forEach(track => track.stop());
+                activeStream = null;
             }
-            // 重置 input 以便下次能觸發同一張照片(如果需要)
-            input.value = ''; 
-        });
+            // 如果當前格子還沒拍到照片(中途取消)，恢復 Empty State
+            if (activeSlotIndex !== -1 && !images[activeSlotIndex]) {
+                const slot = slots[activeSlotIndex];
+                slot.innerHTML = `
+                    <div class="empty-state">
+                        <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
+                        <span>Tap to Shoot</span>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+            activeSlotIndex = -1;
+        }
 
-        function updateSlotUI(index, src) {
-            const slot = slots[index];
-            
-            // 清除舊圖
-            const oldImg = slot.querySelector('.slot-image');
-            if (oldImg) oldImg.remove();
-            
-            // 隱藏 Empty State
-            const emptyState = slot.querySelector('.empty-state');
-            if (emptyState) emptyState.style.display = 'none';
+        // 3. 拍照 (WYSIWYG 核心邏輯)
+        function takePhoto(event) {
+            event.stopPropagation(); // 防止冒泡觸發 startCamera
 
-            // 建立新圖
+            if (activeSlotIndex === -1 || !activeStream) return;
+
+            const slot = slots[activeSlotIndex];
+            const video = slot.querySelector('video');
+            
+            if (!video) return;
+
+            // 準備 Canvas
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            // --- 裁切演算法 (所見即所得) ---
+            // 1. 取得實際影片尺寸
+            const vw = video.videoWidth;
+            const vh = video.videoHeight;
+            
+            // 2. 取得格子顯示尺寸
+            const sw = slot.clientWidth;
+            const sh = slot.clientHeight;
+
+            // 3. 計算格子比例 與 影片比例
+            const slotRatio = sw / sh;
+            const videoRatio = vw / vh;
+
+            let sx, sy, sWidth, sHeight;
+
+            // 4. 模擬 object-fit: cover 的裁切行為
+            if (videoRatio > slotRatio) {
+                // 影片比格子寬 -> 影片高度完整顯示，左右裁切
+                sHeight = vh;
+                sWidth = vh * slotRatio; // 根據格子比例算出應該取多寬
+                sy = 0;
+                sx = (vw - sWidth) / 2; // 取中間
+            } else {
+                // 影片比格子高 -> 影片寬度完整顯示，上下裁切
+                sWidth = vw;
+                sHeight = vw / slotRatio; // 根據格子比例算出應該取多高
+                sx = 0;
+                sy = (vh - sHeight) / 2; // 取中間
+            }
+
+            // 5. 設定 Canvas 輸出尺寸 (高畫質)
+            // 我們希望輸出的圖片解析度足夠高，取裁切區的原始像素大小
+            canvas.width = sWidth;
+            canvas.height = sHeight;
+
+            // 6. 繪製
+            ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
+
+            // 7. 轉為圖片
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            images[activeSlotIndex] = dataUrl;
+
+            // 8. 停止相機並顯示圖片
+            stopCamera(); // 停止串流
+            
+            // 9. 更新 UI 為靜態圖片
+            slot.innerHTML = ''; // 清除 video
             const img = document.createElement('img');
-            img.src = src;
-            img.className = 'slot-image';
+            img.src = dataUrl;
+            img.className = 'slot-content';
             slot.appendChild(img);
+
+            checkCompletion();
         }
 
         function checkCompletion() {
@@ -255,86 +375,70 @@
         function resetApp() {
             if(!confirm('確定要清空所有照片嗎？')) return;
             
+            // 停止任何正在運行的相機
+            if(activeStream) stopCamera();
+
             images = [null, null, null];
             slots.forEach(slot => {
-                const img = slot.querySelector('.slot-image');
-                if (img) img.remove();
-                const emptyState = slot.querySelector('.empty-state');
-                if (emptyState) emptyState.style.display = 'flex';
+                slot.innerHTML = `
+                    <div class="empty-state">
+                        <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
+                        <span>Tap to Shoot</span>
+                    </div>
+                `;
             });
+            lucide.createIcons();
             checkCompletion();
         }
 
-        // 3. 拼貼生成 (核心邏輯：視覺裁切 Visual Crop)
-        // 為了達到 WYSIWYG，我們必須裁切照片的中心部分，使其比例符合格子比例
+        // 4. 下載拼貼
         async function downloadCollage() {
             if (images.some(i => i === null)) return;
 
+            const btnContent = downloadBtn.innerHTML;
             downloadBtn.innerText = '處理中...';
             
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             
-            // 載入所有圖片
+            // 載入圖片物件
             const imgObjects = await Promise.all(images.map(src => loadImage(src)));
             
-            // 我們假設最終寬度為 1080px (高品質)
+            // 設定輸出總寬度 (例如 1080px)
             const finalWidth = 1080;
             
-            // 計算每個格子在螢幕上的長寬比 (Visual Aspect Ratio)
-            // 因為是均分三格，每個格子的高度是寬度的 1/3 左右 (視螢幕而定)
-            // 為了簡化且美觀，我們強制設定拼貼結果為 9:16 的直式海報
-            // 所以整張圖是 1080x1920，每一格就是 1080x640
+            // 計算總高度：
+            // 因為我們在拍照時已經按照格子的比例裁切好了 (WYSIWYG)
+            // 所以我們只需要把三張圖按比例縮放後垂直堆疊即可
             
-            const slotHeight = 640; // 1920 / 3
-            const totalHeight = 1920;
-            
+            // 計算縮放後的高度總和
+            let totalHeight = 0;
+            const scaledHeights = imgObjects.map(img => {
+                const scale = finalWidth / img.naturalWidth;
+                const h = img.naturalHeight * scale;
+                totalHeight += h;
+                return h;
+            });
+
             canvas.width = finalWidth;
             canvas.height = totalHeight;
             
-            // 填滿黑色背景
             ctx.fillStyle = 'black';
             ctx.fillRect(0, 0, finalWidth, totalHeight);
-            
-            // 繪製每一格
-            imgObjects.forEach((img, index) => {
-                // 目標：從原圖(img)中裁切出一塊，填滿 1080x640 的區域 (Center Crop)
+
+            let currentY = 0;
+            imgObjects.forEach((img, i) => {
+                const h = scaledHeights[i];
+                ctx.drawImage(img, 0, currentY, finalWidth, h);
                 
-                const targetRatio = finalWidth / slotHeight; // 1080 / 640 ≈ 1.68
-                const imgRatio = img.naturalWidth / img.naturalHeight;
-                
-                let sW, sH, sX, sY;
-                
-                if (imgRatio > targetRatio) {
-                    // 圖片比格子寬 (Landscape vs Portrait slot) -> 裁掉左右
-                    sH = img.naturalHeight;
-                    sW = sH * targetRatio;
-                    sX = (img.naturalWidth - sW) / 2;
-                    sY = 0;
-                } else {
-                    // 圖片比格子高 (Portrait vs Landscape slot) -> 裁掉上下
-                    sW = img.naturalWidth;
-                    sH = sW / targetRatio;
-                    sX = 0;
-                    sY = (img.naturalHeight - sH) / 2;
-                }
-                
-                // 繪製到 Canvas 的對應位置
-                const destY = index * slotHeight;
-                
-                ctx.drawImage(
-                    img, 
-                    sX, sY, sW, sH, // Source crop
-                    0, destY, finalWidth, slotHeight // Destination
-                );
-                
-                // 畫分割線 (可選)
-                if (index > 0) {
+                // 分割線
+                if (i > 0) {
                     ctx.fillStyle = 'rgba(255,255,255,0.1)';
-                    ctx.fillRect(0, destY, finalWidth, 2); // 2px 線條
+                    ctx.fillRect(0, currentY, finalWidth, 2);
                 }
+                currentY += h;
             });
-            
+
             // 下載
             const link = document.createElement('a');
             const timestamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
@@ -344,8 +448,7 @@
             link.click();
             document.body.removeChild(link);
             
-            downloadBtn.innerHTML = '<i data-lucide="download" class="w-5 h-5"></i><span>儲存拼貼</span>';
-            lucide.createIcons();
+            downloadBtn.innerHTML = btnContent;
         }
 
         function loadImage(src) {
@@ -358,4 +461,3 @@
     </script>
 </body>
 </html>
-    
