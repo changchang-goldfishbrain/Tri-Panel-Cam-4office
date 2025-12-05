@@ -3,367 +3,456 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <title>三格映像 Tri-Panel</title>
+    <title>Tri-Grid Cam</title>
     
     <!-- Mobile Web App Config -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#09090b">
+    <meta name="theme-color" content="#000000">
     
     <!-- Libraries -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
     
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #09090b; /* zinc-950 */
+            background-color: #000;
             color: white;
             overscroll-behavior: none;
             -webkit-tap-highlight-color: transparent;
-            height: 100vh;
-            overflow: hidden; /* App-like feel */
+            height: 100dvh; /* Use dynamic viewport height */
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
         }
-        
-        /* Utility Animations */
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
+
+        /* The Grid Container */
+        #grid-container {
+            flex: 1;
+            display: grid;
+            grid-template-rows: 1fr 1fr 1fr; /* Top, Middle, Bottom */
+            width: 100%;
+            position: relative;
         }
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
+
+        /* Individual Slots */
+        .grid-slot {
+            position: relative;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
+        .grid-slot:last-child {
+            border-bottom: none;
+        }
+
+        /* The Video Element (Moves between slots) */
+        video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            inset: 0;
+            z-index: 10;
+        }
+
+        /* Captured Image (Replaces video) */
+        .captured-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            position: absolute;
+            inset: 0;
+            z-index: 20;
+            display: block;
+        }
+
+        /* Active Slot Indicator (Optional highlight) */
+        .slot-active::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            pointer-events: none;
+            z-index: 30;
+        }
+
+        /* Animations */
         @keyframes flash {
-            0% { opacity: 0; }
-            50% { opacity: 0.8; }
+            0% { background-color: white; opacity: 0; }
+            20% { opacity: 0.6; }
             100% { opacity: 0; }
         }
-        
-        .animate-fade-in { animation: fadeIn 0.6s ease-out forwards; }
-        .animate-slide-up { animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
-        .flash-effect {
-            position: fixed;
+        .flash-overlay {
+            position: absolute;
             inset: 0;
-            background: white;
             pointer-events: none;
-            z-index: 100;
-            opacity: 0;
+            z-index: 50;
         }
-        .flash-active { animation: flash 0.2s ease-out; }
+        .animate-flash {
+            animation: flash 0.3s ease-out;
+        }
 
-        /* Hide scrollbar */
-        ::-webkit-scrollbar { width: 0px; background: transparent; }
-        
-        /* Safe Area for iPhones */
-        .safe-pb { padding-bottom: env(safe-area-inset-bottom, 20px); }
-        .safe-pt { padding-top: env(safe-area-inset-top, 20px); }
-        
-        /* Orientation Warning (Optional styling if we wanted a blocking overlay, but text is enough) */
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            inset: 0;
+            pointer-events: none; /* Let clicks pass through to grid if needed */
+            z-index: 40;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            padding-bottom: env(safe-area-inset-bottom, 24px);
+        }
+
+        /* Controls */
+        .control-btn {
+            pointer-events: auto;
+            transition: transform 0.1s;
+        }
+        .control-btn:active {
+            transform: scale(0.95);
+        }
     </style>
 </head>
 <body>
 
-    <!-- App Container -->
-    <div id="app" class="relative w-full h-full flex flex-col">
-        <!-- Content will be injected here by JS -->
+    <!-- Main App Area -->
+    <div id="grid-container">
+        <!-- Slots will be injected here -->
+        <div id="slot-0" class="grid-slot" onclick="handleSlotClick(0)"></div>
+        <div id="slot-1" class="grid-slot" onclick="handleSlotClick(1)"></div>
+        <div id="slot-2" class="grid-slot" onclick="handleSlotClick(2)"></div>
     </div>
 
-    <!-- Hidden Canvas for Processing -->
-    <canvas id="processCanvas" style="display: none;"></canvas>
+    <!-- Video Element (Initially detached or in slot 0) -->
+    <video id="videoElement" autoplay playsinline muted style="display: none;"></video>
+
+    <!-- UI Overlay -->
+    <div id="ui-layer">
+        
+        <!-- Start Screen -->
+        <div id="start-screen" class="absolute inset-0 bg-black flex flex-col items-center justify-center pointer-events-auto z-50">
+            <h1 class="text-3xl font-light tracking-widest mb-2">TRI-GRID</h1>
+            <p class="text-zinc-500 text-xs mb-8 tracking-wider">VERTICAL COLLAGE CAM</p>
+            <button onclick="startCamera()" class="bg-white text-black px-8 py-3 rounded-full font-bold flex items-center gap-2 hover:bg-zinc-200 transition-colors">
+                <i data-lucide="camera" class="w-5 h-5"></i>
+                開始拍攝
+            </button>
+        </div>
+
+        <!-- Controls (Hidden initially) -->
+        <div id="controls" class="hidden w-full px-10 py-6 flex justify-between items-center bg-gradient-to-t from-black/80 to-transparent">
+            
+            <!-- Undo / Back -->
+            <button onclick="undo()" class="control-btn text-white/80 p-4 rounded-full bg-black/20 backdrop-blur-md hover:bg-white/20">
+                <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+            </button>
+
+            <!-- Shutter Button -->
+            <button id="shutter-btn" onclick="capture()" class="control-btn w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-lg shadow-black/30">
+                <div class="w-16 h-16 bg-white rounded-full"></div>
+            </button>
+
+            <!-- Done / Check (Shows when finished) -->
+            <button id="done-btn" onclick="finish()" class="control-btn text-white p-4 rounded-full bg-green-500/80 backdrop-blur-md hidden">
+                <i data-lucide="check" class="w-8 h-8"></i>
+            </button>
+
+            <!-- Placeholder for spacing when Done is hidden -->
+            <div id="spacer-right" class="w-14"></div>
+        </div>
+
+        <!-- Result Actions (Hidden initially) -->
+        <div id="result-actions" class="hidden absolute bottom-0 w-full p-6 pb-12 bg-black/90 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 pointer-events-auto z-50 animate-[slideUp_0.3s_ease-out]">
+            <p class="text-center text-zinc-400 text-xs mb-2">預覽模式</p>
+            <button onclick="downloadCollage()" class="w-full bg-white text-black py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+                <i data-lucide="download" class="w-5 h-5"></i>
+                儲存照片
+            </button>
+            <button onclick="resetApp()" class="w-full bg-zinc-800 text-white py-4 rounded-xl font-medium flex items-center justify-center gap-2">
+                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
+                重新開始
+            </button>
+        </div>
+    </div>
+
+    <!-- Hidden Canvas for processing -->
+    <canvas id="processCanvas" class="hidden"></canvas>
 
     <script>
-        // --- State Management ---
-        const state = {
-            step: 'INTRO', // INTRO, CAMERA, RESULT
-            photos: [],    // Array of base64 strings
-            stream: null,
-            finalCollage: null
-        };
+        // --- State ---
+        let stream = null;
+        let currentSlot = 0; // 0, 1, 2
+        let images = [null, null, null]; // Stores Data URLs
+        const totalSlots = 3;
 
-        const app = document.getElementById('app');
+        // Elements
+        const video = document.getElementById('videoElement');
         const canvas = document.getElementById('processCanvas');
+        const uiStart = document.getElementById('start-screen');
+        const uiControls = document.getElementById('controls');
+        const uiResult = document.getElementById('result-actions');
+        const shutterBtn = document.getElementById('shutter-btn');
+        const doneBtn = document.getElementById('done-btn');
+        const spacerRight = document.getElementById('spacer-right');
+        const slots = [
+            document.getElementById('slot-0'),
+            document.getElementById('slot-1'),
+            document.getElementById('slot-2')
+        ];
 
-        // --- Views ---
-
-        function renderIntro() {
-            app.innerHTML = `
-                <div class="flex flex-col items-center justify-center min-h-screen p-6 animate-fade-in relative overflow-hidden">
-                    <!-- Background Effects -->
-                    <div class="absolute top-0 left-0 w-full h-full opacity-20 pointer-events-none">
-                        <div class="absolute top-1/4 left-1/4 w-64 h-64 bg-zinc-700 rounded-full blur-[100px]"></div>
-                        <div class="absolute bottom-1/4 right-1/4 w-64 h-64 bg-zinc-600 rounded-full blur-[100px]"></div>
-                    </div>
-
-                    <div class="z-10 text-center space-y-12 max-w-sm w-full">
-                        <div class="space-y-4">
-                            <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm mb-4">
-                                <i data-lucide="aperture" class="w-8 h-8 text-white"></i>
-                            </div>
-                            <h1 class="text-4xl font-light tracking-wide text-white">三格映像</h1>
-                            <p class="text-zinc-400 text-sm tracking-widest uppercase">Tri-Panel Film Camera</p>
-                        </div>
-
-                        <div class="flex flex-col gap-4">
-                            <button onclick="startCamera()" class="w-full bg-white text-black font-medium py-4 rounded-full hover:bg-zinc-200 transition-all active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-white/10">
-                                <span>開始拍攝</span>
-                                <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                            </button>
-                            
-                            <p class="text-xs text-zinc-500 mt-2 leading-relaxed">
-                                拍攝三張橫式照片<br>自動合成垂直膠卷風格
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-        }
-
-        function renderCamera() {
-            const currentCount = state.photos.length + 1;
-            const totalCount = 3;
-
-            app.innerHTML = `
-                <div class="fixed inset-0 bg-black flex flex-col animate-fade-in">
-                    <!-- Flash Overlay -->
-                    <div id="flashOverlay" class="flash-effect"></div>
-
-                    <!-- Top Bar -->
-                    <div class="absolute top-0 left-0 right-0 z-20 safe-pt px-6 pt-4 bg-gradient-to-b from-black/90 to-transparent pb-16 pointer-events-none">
-                        <div class="flex justify-between items-start max-w-md mx-auto pointer-events-auto">
-                            <button onclick="resetApp()" class="text-white/70 hover:text-white p-2 backdrop-blur-md rounded-full bg-black/20">
-                                <i data-lucide="x" class="w-6 h-6"></i>
-                            </button>
-                            
-                            <!-- Counter Display -->
-                            <div class="flex flex-col items-center">
-                                <div class="px-4 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/10 text-sm font-medium tracking-wider text-white">
-                                    ${currentCount} / ${totalCount}
-                                </div>
-                                ${currentCount === 1 ? '<span class="text-[10px] text-zinc-400 mt-1 opacity-80">請橫持手機拍攝</span>' : ''}
-                            </div>
-                            
-                            <div class="w-10"></div> <!-- Spacer -->
-                        </div>
-                    </div>
-
-                    <!-- Viewfinder -->
-                    <div class="flex-1 relative flex items-center justify-center overflow-hidden bg-black">
-                        <video id="videoElement" autoplay playsinline muted class="absolute w-full h-full object-cover opacity-90"></video>
-                        
-                        <!-- Grid Lines (Landscape Aspect) -->
-                        <div class="absolute inset-0 pointer-events-none opacity-30">
-                            <div class="w-full h-full flex flex-col">
-                                <div class="flex-1 border-b border-white"></div>
-                                <div class="flex-1 border-b border-white"></div>
-                                <div class="flex-1"></div>
-                            </div>
-                            <div class="absolute inset-0 flex">
-                                <div class="flex-1 border-r border-white"></div>
-                                <div class="flex-1 border-r border-white"></div>
-                                <div class="flex-1"></div>
-                            </div>
-                        </div>
-                        
-                        <!-- Loading State -->
-                        <div id="cameraLoading" class="absolute inset-0 flex items-center justify-center bg-zinc-900 z-[-1]">
-                            <span class="text-zinc-500 animate-pulse">啟動相機中...</span>
-                        </div>
-                    </div>
-
-                    <!-- Bottom Controls -->
-                    <div class="h-40 bg-black flex flex-col items-center justify-center relative z-20 safe-pb space-y-4">
-                        <button onclick="takePhoto()" class="w-20 h-20 rounded-full border-4 border-white/80 flex items-center justify-center hover:bg-white/10 active:scale-95 transition-all shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                            <div class="w-16 h-16 bg-white rounded-full"></div>
-                        </button>
-                        <span class="text-xs text-zinc-500 font-medium tracking-widest uppercase">Shot ${currentCount}</span>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-            
-            // Re-attach stream if it exists
-            const video = document.getElementById('videoElement');
-            if (state.stream && video) {
-                video.srcObject = state.stream;
-            }
-        }
-
-        function renderResult() {
-            const hasImage = !!state.finalCollage;
-            
-            app.innerHTML = `
-                <div class="min-h-screen bg-zinc-950 text-white flex flex-col animate-fade-in">
-                    <!-- Header -->
-                    <div class="px-6 py-4 flex justify-between items-center bg-zinc-950/80 backdrop-blur-sm sticky top-0 z-20 safe-pt border-b border-white/5">
-                        <button onclick="resetApp()" class="text-zinc-400 hover:text-white transition-colors">
-                            <i data-lucide="x" class="w-6 h-6"></i>
-                        </button>
-                        <span class="font-medium text-sm tracking-wider text-zinc-300">PREVIEW</span>
-                        <div class="w-6"></div>
-                    </div>
-
-                    <!-- Content -->
-                    <div class="flex-1 overflow-y-auto p-6 flex items-start justify-center">
-                        ${!hasImage 
-                            ? `<div class="flex flex-col items-center justify-center h-64 space-y-4 text-zinc-500 mt-20">
-                                 <i data-lucide="loader-2" class="w-8 h-8 animate-spin"></i>
-                                 <span class="text-sm">正在沖洗照片...</span>
-                               </div>`
-                            : `<div class="relative shadow-2xl shadow-black/50 max-w-2xl w-full mx-auto animate-slide-up bg-white p-3 pb-8 rounded-sm">
-                                 <img src="${state.finalCollage}" alt="Final Collage" class="w-full h-auto block select-none bg-zinc-100" />
-                                 <div class="absolute bottom-2 right-4 text-[10px] text-black/30 font-mono tracking-widest">TRI-PANEL • LANDSCAPE</div>
-                               </div>`
-                        }
-                    </div>
-
-                    <!-- Footer -->
-                    <div class="p-6 bg-zinc-900/80 backdrop-blur-lg border-t border-white/5 space-y-4 safe-pb z-30">
-                        <button onclick="downloadImage()" ${!hasImage ? 'disabled' : ''} class="w-full bg-white text-black font-bold py-4 rounded-full shadow-lg hover:bg-zinc-200 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none">
-                            <i data-lucide="download" class="w-5 h-5"></i>
-                            下載照片
-                        </button>
-
-                        <button onclick="resetApp()" class="w-full bg-transparent text-zinc-400 font-medium py-3 rounded-full hover:text-white transition-colors flex items-center justify-center gap-2 text-sm">
-                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                            重新拍攝
-                        </button>
-                    </div>
-                </div>
-            `;
-            lucide.createIcons();
-
-            if (!hasImage) {
-                // Trigger generation if not ready
-                setTimeout(generateCollage, 500);
-            }
-        }
-
-        // --- Logic ---
+        // --- Core Functions ---
 
         async function startCamera() {
             try {
-                // Request 16:9 Landscape ideal
-                const stream = await navigator.mediaDevices.getUserMedia({
+                // Request higher resolution for better crop quality
+                stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        aspectRatio: { ideal: 1.7777 } // 16:9
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
                     },
                     audio: false
                 });
-                state.stream = stream;
-                state.step = 'CAMERA';
-                renderCamera();
+                
+                video.srcObject = stream;
+                video.style.display = 'block';
+                
+                // Wait for video to be ready
+                video.onloadedmetadata = () => {
+                    video.play();
+                    uiStart.classList.add('hidden');
+                    uiControls.classList.remove('hidden');
+                    updateActiveSlot();
+                };
+
             } catch (err) {
                 console.error(err);
-                alert("無法存取相機，請確認您已允許權限或使用手機瀏覽器（Safari/Chrome）。");
+                alert('無法啟動相機，請檢查權限。');
             }
         }
 
-        function takePhoto() {
-            const video = document.getElementById('videoElement');
-            if (!video) return;
+        function updateActiveSlot() {
+            // Remove video from wherever it is
+            if (video.parentElement) {
+                video.parentElement.removeChild(video);
+            }
 
-            // Flash effect
-            const flash = document.getElementById('flashOverlay');
-            flash.classList.remove('flash-active');
-            void flash.offsetWidth; // trigger reflow
-            flash.classList.add('flash-active');
+            // Clean up UI
+            shutterBtn.classList.remove('hidden');
+            doneBtn.classList.add('hidden');
+            spacerRight.classList.remove('hidden');
 
-            // Capture
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            const photoData = canvas.toDataURL('image/png');
-            state.photos.push(photoData);
+            // If we have slots left
+            if (currentSlot < totalSlots) {
+                const slotEl = slots[currentSlot];
+                
+                // Remove existing image if any (for retakes)
+                const existingImg = slotEl.querySelector('.captured-img');
+                if (existingImg) existingImg.remove();
 
-            // Update UI
-            if (state.photos.length >= 3) {
-                stopCamera();
-                state.step = 'RESULT';
-                renderResult();
+                // Add video to current slot
+                slotEl.appendChild(video);
+                
+                // Highlight
+                slots.forEach(s => s.classList.remove('slot-active'));
+                slotEl.classList.add('slot-active');
             } else {
-                // Re-render camera to show counter update
-                renderCamera();
+                // All slots full
+                video.pause();
+                shutterBtn.classList.add('hidden');
+                doneBtn.classList.remove('hidden');
+                spacerRight.classList.add('hidden');
             }
         }
 
-        function stopCamera() {
-            if (state.stream) {
-                state.stream.getTracks().forEach(track => track.stop());
-                state.stream = null;
+        function capture() {
+            if (currentSlot >= totalSlots) return;
+
+            const slotEl = slots[currentSlot];
+            
+            // Visual Flash
+            const flash = document.createElement('div');
+            flash.className = 'flash-overlay animate-flash';
+            slotEl.appendChild(flash);
+            setTimeout(() => flash.remove(), 500);
+
+            // 1. Calculate Crop
+            // The video is object-fit: cover inside the slot.
+            // We need to draw exactly what the user sees onto a canvas.
+            
+            const rect = slotEl.getBoundingClientRect();
+            const slotWidth = rect.width;
+            const slotHeight = rect.height;
+            const slotAspect = slotWidth / slotHeight;
+
+            const videoWidth = video.videoWidth;
+            const videoHeight = video.videoHeight;
+            const videoAspect = videoWidth / videoHeight;
+
+            let renderW, renderH, offsetX, offsetY;
+
+            // Logic matching object-fit: cover
+            if (slotAspect > videoAspect) {
+                // Slot is wider than video (relative to height) -> Video fills width, cropped top/bottom? 
+                // Wait: Cover means fill the container.
+                // If Slot is 'more landscape' than video, we fit width and crop height? No.
+                // If Slot (e.g. 3:1) is wider than Video (16:9), we scale video to match Slot Width, and crop height.
+                
+                // Actually easier logic:
+                // Scale factor to make the SMALLER dimension match the container
+                const scale = Math.max(slotWidth / videoWidth, slotHeight / videoHeight);
+                
+                // But we want to crop the SOURCE video, not scale the canvas.
+                // Let's project the slot dimensions back onto the video source coordinates.
+                
+                if (videoAspect > slotAspect) {
+                     // Video is wider than slot. Height matches (scaled). Crop sides.
+                     // Source Height = Video Height
+                     // Source Width = Video Height * SlotAspect
+                     const srcH = videoHeight;
+                     const srcW = videoHeight * slotAspect;
+                     const srcX = (videoWidth - srcW) / 2;
+                     const srcY = 0;
+                     
+                     renderToCanvas(srcX, srcY, srcW, srcH);
+                } else {
+                     // Video is taller than slot. Width matches. Crop top/bottom.
+                     const srcW = videoWidth;
+                     const srcH = videoWidth / slotAspect;
+                     const srcX = 0;
+                     const srcY = (videoHeight - srcH) / 2;
+                     
+                     renderToCanvas(srcX, srcY, srcW, srcH);
+                }
+
+            } else {
+                 // Slot is narrower/taller. 
+                 // Same logic covers all cases actually:
+                 if (videoAspect > slotAspect) {
+                     // Video wider -> Crop X
+                     const srcH = videoHeight;
+                     const srcW = videoHeight * slotAspect;
+                     const srcX = (videoWidth - srcW) / 2;
+                     const srcY = 0;
+                     renderToCanvas(srcX, srcY, srcW, srcH);
+                 } else {
+                     // Video taller -> Crop Y
+                     const srcW = videoWidth;
+                     const srcH = videoWidth / slotAspect;
+                     const srcX = 0;
+                     const srcY = (videoHeight - srcH) / 2;
+                     renderToCanvas(srcX, srcY, srcW, srcH);
+                 }
             }
+
+            // Move to next
+            currentSlot++;
+            updateActiveSlot();
         }
 
-        async function generateCollage() {
-            if (state.photos.length === 0) return;
-
-            // Load all images
-            const images = await Promise.all(state.photos.map(src => {
-                return new Promise((resolve, reject) => {
-                    const img = new Image();
-                    img.onload = () => resolve(img);
-                    img.onerror = reject;
-                    img.src = src;
-                });
-            }));
-
-            // Calculate dimensions
-            // Use largest width found, stack heights
-            const maxWidth = Math.max(...images.map(img => img.naturalWidth));
-            const totalHeight = images.reduce((acc, img) => acc + img.naturalHeight, 0);
-
-            // Setup canvas
-            canvas.width = maxWidth;
-            canvas.height = totalHeight;
+        function renderToCanvas(sx, sy, sw, sh) {
+            // Set canvas size to the cropped resolution (high quality)
+            canvas.width = sw;
+            canvas.height = sh;
             const ctx = canvas.getContext('2d');
             
-            // Fill background white
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Draw cropped portion
+            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
+            
+            // Create Image Element
+            const dataUrl = canvas.toDataURL('image/png', 0.9);
+            images[currentSlot] = dataUrl; // Store for final stitch
+            
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = 'captured-img';
+            
+            // Add to the slot we just captured
+            slots[currentSlot].appendChild(img);
+        }
 
-            // Draw images
-            let y = 0;
-            images.forEach(img => {
-                // Center align if widths differ
-                const x = (maxWidth - img.naturalWidth) / 2;
-                ctx.drawImage(img, x, y);
-                y += img.naturalHeight;
+        function undo() {
+            if (currentSlot === 0) return;
+            
+            // If we were finished (Done button showing), hide it
+            if (currentSlot === totalSlots) {
+                // Just decrement, updateActiveSlot will handle UI
+            }
+            
+            currentSlot--;
+            images[currentSlot] = null;
+            updateActiveSlot(); // This puts video back into the slot
+        }
+
+        function finish() {
+            uiControls.classList.add('hidden');
+            uiResult.classList.remove('hidden');
+            // Stop camera to save battery
+            video.pause();
+        }
+
+        function downloadCollage() {
+            if (images.some(img => !img)) return;
+
+            // Create final canvas
+            // Assume all images have same width (since slots are same width), but let's check.
+            // We'll use the width of the first image as base.
+            
+            // We need to load images to get natural dimensions
+            const loadProms = images.map(src => {
+                return new Promise(resolve => {
+                    const i = new Image();
+                    i.onload = () => resolve(i);
+                    i.src = src;
+                });
             });
 
-            state.finalCollage = canvas.toDataURL('image/png', 1.0);
-            
-            // Re-render to show image
-            renderResult();
-        }
-
-        function downloadImage() {
-            if (!state.finalCollage) return;
-            const link = document.createElement('a');
-            link.href = state.finalCollage;
-            const date = new Date().toISOString().slice(0, 10);
-            link.download = `TriPanel_Landscape_${date}.png`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            Promise.all(loadProms).then(imgs => {
+                const totalW = imgs[0].naturalWidth;
+                const totalH = imgs.reduce((acc, img) => acc + img.naturalHeight, 0);
+                
+                canvas.width = totalW;
+                canvas.height = totalH;
+                const ctx = canvas.getContext('2d');
+                
+                let y = 0;
+                imgs.forEach(img => {
+                    // Draw full width, keeping aspect
+                    // If dimensions differ slightly due to rounding, stretch to fit width
+                    ctx.drawImage(img, 0, y, totalW, img.naturalHeight);
+                    y += img.naturalHeight;
+                });
+                
+                // Download
+                const link = document.createElement('a');
+                link.href = canvas.toDataURL('image/jpeg', 0.9);
+                link.download = `TriGrid_${Date.now()}.jpg`;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            });
         }
 
         function resetApp() {
-            stopCamera();
-            state.photos = [];
-            state.finalCollage = null;
-            state.step = 'INTRO';
-            renderIntro();
+            images = [null, null, null];
+            currentSlot = 0;
+            
+            // Remove all images
+            document.querySelectorAll('.captured-img').forEach(el => el.remove());
+            
+            uiResult.classList.add('hidden');
+            uiControls.classList.remove('hidden');
+            
+            video.play();
+            updateActiveSlot();
         }
 
-        // Initialize
-        window.onload = renderIntro;
+        // Init Icons
+        lucide.createIcons();
 
     </script>
 </body>
