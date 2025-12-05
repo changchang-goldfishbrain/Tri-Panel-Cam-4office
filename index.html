@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <title>Tri-Grid Cam</title>
+    <title>Tri-Grid Native</title>
     
     <!-- Mobile Web App Config -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -23,434 +23,339 @@
             color: white;
             overscroll-behavior: none;
             -webkit-tap-highlight-color: transparent;
-            height: 100dvh; /* Dynamic viewport height */
-            overflow: hidden;
+            height: 100dvh;
             display: flex;
             flex-direction: column;
         }
 
-        /* The Grid Container */
+        /* 隱藏的原生輸入框 */
+        #camera-input {
+            display: none;
+        }
+
+        /* 網格容器 */
         #grid-container {
             flex: 1;
             display: grid;
-            grid-template-rows: 1fr 1fr 1fr; /* Top, Middle, Bottom */
+            grid-template-rows: 1fr 1fr 1fr;
             width: 100%;
-            position: relative;
+            background: #000;
         }
 
-        /* Individual Slots */
+        /* 格子樣式 */
         .grid-slot {
             position: relative;
-            overflow: hidden;
-            background-color: #1a1a1a;
+            width: 100%;
+            height: 100%;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
-            /* Ensure dimensions are calculated correctly */
-            min-height: 0; 
-            min-width: 0;
+            background-color: #111;
+            transition: background-color 0.2s;
+            cursor: pointer;
         }
         .grid-slot:last-child {
             border-bottom: none;
         }
+        .grid-slot:active {
+            background-color: #222;
+        }
 
-        /* The Video Element */
-        video {
+        /* 顯示的照片 */
+        .slot-image {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            /* CRITICAL: Must match the JS center-crop logic */
-            object-position: 50% 50%; 
+            object-position: center center;
             position: absolute;
             inset: 0;
             z-index: 10;
-            display: block;
-            pointer-events: none;
         }
 
-        /* Captured Image */
-        .captured-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            object-position: 50% 50%;
-            position: absolute;
-            inset: 0;
-            z-index: 20;
-            display: block;
-        }
-
-        /* Active Slot Highlight & Guidelines */
-        .slot-active {
-            box-shadow: inset 0 0 0 2px rgba(255, 215, 0, 0.6); /* Gold tint for active */
-        }
-        
-        /* Rule of thirds grid for active slot */
-        .slot-active::before {
-            content: '';
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            z-index: 30;
-            background-image: 
-                linear-gradient(to right, rgba(255,255,255,0.3) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255,255,255,0.3) 1px, transparent 1px);
-            background-size: 33.33% 33.33%;
-            opacity: 0.6;
-        }
-
-        /* Animations */
-        @keyframes flash {
-            0% { background-color: white; opacity: 0; }
-            20% { opacity: 0.8; }
-            100% { opacity: 0; }
-        }
-        .flash-overlay {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            z-index: 50;
-        }
-        .animate-flash {
-            animation: flash 0.25s ease-out;
-        }
-
-        @keyframes slideUp {
-            from { transform: translateY(100%); }
-            to { transform: translateY(0); }
-        }
-
-        /* UI Overlay */
-        #ui-layer {
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            z-index: 40;
+        /* 空狀態圖示 */
+        .empty-state {
             display: flex;
             flex-direction: column;
-            justify-content: flex-end;
-            padding-bottom: env(safe-area-inset-bottom, 20px);
+            align-items: center;
+            gap: 8px;
+            color: #666;
+            z-index: 5;
+            pointer-events: none;
+        }
+        .empty-state span {
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            text-transform: uppercase;
         }
 
-        /* Controls */
-        .control-btn {
-            pointer-events: auto;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        /* 底部控制列 */
+        #toolbar {
+            height: auto;
+            min-height: 80px;
+            background: #000;
+            border-top: 1px solid #222;
+            padding: 20px;
+            padding-bottom: env(safe-area-inset-bottom, 20px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        .control-btn:active {
-            transform: scale(0.9);
+
+        .btn-primary {
+            background: white;
+            color: black;
+            font-weight: bold;
+            padding: 12px 24px;
+            border-radius: 9999px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 0 20px rgba(255,255,255,0.2);
         }
+        .btn-secondary {
+            background: #222;
+            color: white;
+            padding: 12px;
+            border-radius: 50%;
+        }
+        .btn-disabled {
+            opacity: 0.5;
+            pointer-events: none;
+            box-shadow: none;
+        }
+
     </style>
 </head>
 <body>
 
-    <!-- Main Grid -->
+    <!-- 隱藏的相機輸入 -->
+    <!-- accept="image/*" capture="environment" 強制呼叫後鏡頭 -->
+    <input type="file" id="camera-input" accept="image/*" capture="environment">
+
+    <!-- 主網格 -->
     <div id="grid-container">
-        <div id="slot-0" class="grid-slot" onclick="handleSlotClick(0)"></div>
-        <div id="slot-1" class="grid-slot" onclick="handleSlotClick(1)"></div>
-        <div id="slot-2" class="grid-slot" onclick="handleSlotClick(2)"></div>
-    </div>
-
-    <!-- Video Element (Detached initially) -->
-    <!-- Important: object-position center is enforced in CSS -->
-    <video id="videoElement" autoplay playsinline muted style="display: none;"></video>
-
-    <!-- UI Overlay -->
-    <div id="ui-layer">
-        
-        <!-- Start Screen -->
-        <div id="start-screen" class="absolute inset-0 bg-black flex flex-col items-center justify-center pointer-events-auto z-50">
-            <div class="mb-8 relative">
-                <div class="w-16 h-24 border-2 border-white/30 rounded grid grid-rows-3 overflow-hidden">
-                    <div class="bg-white/10 border-b border-white/10"></div>
-                    <div class="bg-white/10 border-b border-white/10"></div>
-                    <div class="bg-white/10"></div>
-                </div>
+        <!-- 上 -->
+        <div class="grid-slot" id="slot-0" onclick="triggerCamera(0)">
+            <div class="empty-state">
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
             </div>
-            <h1 class="text-3xl font-bold tracking-tight mb-2">TRI-GRID</h1>
-            <p class="text-zinc-400 text-sm mb-10 tracking-wide">垂直三格拼貼相機</p>
-            <button onclick="startCamera()" class="bg-white text-black px-10 py-4 rounded-full font-bold text-lg flex items-center gap-2 hover:bg-zinc-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                <i data-lucide="camera" class="w-5 h-5"></i>
-                開始拍攝
-            </button>
         </div>
-
-        <!-- Controls -->
-        <div id="controls" class="hidden w-full px-8 py-8 flex justify-between items-center bg-gradient-to-t from-black via-black/50 to-transparent">
-            
-            <!-- Undo -->
-            <button onclick="undo()" class="control-btn text-white/90 p-4 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/10">
-                <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
-            </button>
-
-            <!-- Shutter -->
-            <button id="shutter-btn" onclick="capture()" class="control-btn relative w-20 h-20 rounded-full border-[5px] border-white/30 flex items-center justify-center shadow-lg">
-                <div class="w-16 h-16 bg-white rounded-full transition-transform duration-100"></div>
-            </button>
-
-            <!-- Done (Replaces Shutter when full) -->
-            <button id="done-btn" onclick="finish()" class="hidden control-btn bg-green-500 text-white w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.4)]">
-                <i data-lucide="check" class="w-10 h-10"></i>
-            </button>
-
-            <!-- Spacer/Placeholder -->
-            <div class="w-[58px]"></div> 
+        <!-- 中 -->
+        <div class="grid-slot" id="slot-1" onclick="triggerCamera(1)">
+            <div class="empty-state">
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
+            </div>
         </div>
-
-        <!-- Result Actions -->
-        <div id="result-actions" class="hidden absolute bottom-0 left-0 right-0 p-6 pb-10 bg-black/90 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 pointer-events-auto z-50 animate-[slideUp_0.3s_ease-out]">
-            <h3 class="text-center text-white font-semibold mb-2">拼貼完成</h3>
-            <button onclick="downloadCollage()" class="w-full bg-white text-black py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-                <i data-lucide="download" class="w-5 h-5"></i>
-                儲存照片
-            </button>
-            <button onclick="resetApp()" class="w-full bg-zinc-800 text-white py-4 rounded-xl font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
-                <i data-lucide="refresh-cw" class="w-5 h-5"></i>
-                重新開始
-            </button>
+        <!-- 下 -->
+        <div class="grid-slot" id="slot-2" onclick="triggerCamera(2)">
+            <div class="empty-state">
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
+            </div>
         </div>
     </div>
 
-    <!-- Hidden Canvas -->
-    <canvas id="processCanvas" class="hidden"></canvas>
+    <!-- 底部工具列 -->
+    <div id="toolbar">
+        <button onclick="resetApp()" class="btn-secondary">
+            <i data-lucide="refresh-cw" class="w-6 h-6"></i>
+        </button>
+
+        <div class="text-xs text-gray-500 font-mono" id="status-text">0 / 3</div>
+
+        <button id="download-btn" onclick="downloadCollage()" class="btn-primary btn-disabled">
+            <i data-lucide="download" class="w-5 h-5"></i>
+            <span>儲存拼貼</span>
+        </button>
+    </div>
+
+    <!-- 隱藏畫布用於生成圖片 -->
+    <canvas id="canvas" style="display: none;"></canvas>
 
     <script>
-        // --- State ---
-        let stream = null;
-        let currentSlot = 0; 
-        let images = [null, null, null]; // DataURLs
-        const totalSlots = 3;
+        // 初始化圖示
+        lucide.createIcons();
 
-        // Elements
-        const video = document.getElementById('videoElement');
-        const canvas = document.getElementById('processCanvas');
-        const uiStart = document.getElementById('start-screen');
-        const uiControls = document.getElementById('controls');
-        const uiResult = document.getElementById('result-actions');
-        const shutterBtn = document.getElementById('shutter-btn');
-        const doneBtn = document.getElementById('done-btn');
+        // 狀態
+        let images = [null, null, null]; // 存放 Base64 或 Blob URL
+        let activeSlotIndex = -1;
+        const input = document.getElementById('camera-input');
         const slots = [
             document.getElementById('slot-0'),
             document.getElementById('slot-1'),
             document.getElementById('slot-2')
         ];
+        const downloadBtn = document.getElementById('download-btn');
+        const statusText = document.getElementById('status-text');
 
-        // Initialize Icons
-        lucide.createIcons();
+        // 1. 觸發相機
+        function triggerCamera(index) {
+            activeSlotIndex = index;
+            // 觸發隱藏的 input click
+            input.click(); 
+        }
 
-        // --- Core Functions ---
-
-        async function startCamera() {
-            try {
-                // Request best resolution
-                stream = await navigator.mediaDevices.getUserMedia({
-                    video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 }
-                    },
-                    audio: false
-                });
+        // 2. 監聽照片輸入
+        input.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) {
+                const file = e.target.files[0];
+                const reader = new FileReader();
                 
-                video.srcObject = stream;
-                video.style.display = 'block';
-                
-                video.onloadedmetadata = () => {
-                    video.play();
-                    uiStart.classList.add('hidden');
-                    uiControls.classList.remove('hidden');
-                    updateActiveSlot();
+                reader.onload = function(evt) {
+                    const dataUrl = evt.target.result;
+                    
+                    // 儲存數據
+                    images[activeSlotIndex] = dataUrl;
+                    
+                    // 更新 UI
+                    updateSlotUI(activeSlotIndex, dataUrl);
+                    checkCompletion();
                 };
-
-            } catch (err) {
-                console.error("Camera Error:", err);
-                alert('無法啟動相機。請確保使用 Safari (iOS) 或 Chrome (Android) 並允許權限。');
-            }
-        }
-
-        function updateActiveSlot() {
-            // Clean up old video position
-            if (video.parentElement) {
-                video.parentElement.removeChild(video);
-            }
-
-            // Update UI State
-            if (currentSlot < totalSlots) {
-                const slotEl = slots[currentSlot];
                 
-                // Remove preview image if any (retaking)
-                const existingImg = slotEl.querySelector('.captured-img');
-                if (existingImg) existingImg.remove();
-
-                // Move video to slot
-                slotEl.appendChild(video);
-                video.play();
-                
-                // Highlight
-                slots.forEach(s => s.classList.remove('slot-active'));
-                slotEl.classList.add('slot-active');
-                
-                // Buttons
-                shutterBtn.classList.remove('hidden');
-                doneBtn.classList.add('hidden');
-            } else {
-                // Done state
-                slots.forEach(s => s.classList.remove('slot-active'));
-                video.pause();
-                shutterBtn.classList.add('hidden');
-                doneBtn.classList.remove('hidden');
+                reader.readAsDataURL(file);
             }
-        }
+            // 重置 input 以便下次能觸發同一張照片(如果需要)
+            input.value = ''; 
+        });
 
-        // --- THE FIX: Aspect Ratio Matching Algorithm ---
-        function capture() {
-            if (currentSlot >= totalSlots) return;
-
-            const slotEl = slots[currentSlot];
+        function updateSlotUI(index, src) {
+            const slot = slots[index];
             
-            // 1. Visual Effect
-            const flash = document.createElement('div');
-            flash.className = 'flash-overlay animate-flash';
-            slotEl.appendChild(flash);
-            setTimeout(() => flash.remove(), 300);
-
-            // 2. Logic: Center-Crop Aspect Ratio Match
-            // We ignore all CSS scaling values. We simply want to take a crop 
-            // from the center of the video that matches the Aspect Ratio of the slot.
+            // 清除舊圖
+            const oldImg = slot.querySelector('.slot-image');
+            if (oldImg) oldImg.remove();
             
-            const vW = video.videoWidth;
-            const vH = video.videoHeight;
-            const sW = slotEl.clientWidth;
-            const sH = slotEl.clientHeight;
+            // 隱藏 Empty State
+            const emptyState = slot.querySelector('.empty-state');
+            if (emptyState) emptyState.style.display = 'none';
 
-            // Ratios
-            const videoAspect = vW / vH;
-            const slotAspect = sW / sH;
-
-            let renderW, renderH, startX, startY;
-
-            if (slotAspect > videoAspect) {
-                // The slot is "wider" than the video (e.g. video is portrait, slot is square)
-                // OR video is landscape, but slot is extremely panoramic.
-                // We must fit to Width.
-                // Result: We capture full Video Width, and crop Video Height.
-                // WAIT: If Slot is Wider (larger ratio), we need to fit the Width of the video?
-                // Example: Slot 2:1 (2.0), Video 1:1 (1.0).
-                // To get a 2:1 crop from a 1:1 image, we use the full Width, 
-                // but only half the Height.
-                
-                renderW = vW;
-                renderH = vW / slotAspect;
-                startX = 0;
-                startY = (vH - renderH) / 2; // Center vertically
-
-            } else {
-                // The slot is "taller" (or narrower) than the video.
-                // Example: Slot 9:16 (0.56), Video 16:9 (1.77).
-                // To get a tall crop from a wide video, we use the full Height,
-                // but only a narrow strip of Width.
-                
-                renderH = vH;
-                renderW = vH * slotAspect;
-                startX = (vW - renderW) / 2; // Center horizontally
-                startY = 0;
-            }
-
-            // 3. Draw to Canvas
-            // We set the canvas to exactly match the crop resolution for maximum quality
-            canvas.width = renderW;
-            canvas.height = renderH;
-            
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, startX, startY, renderW, renderH, 0, 0, renderW, renderH);
-
-            // 4. Save and Show
-            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-            images[currentSlot] = dataUrl;
-
+            // 建立新圖
             const img = document.createElement('img');
-            img.src = dataUrl;
-            img.className = 'captured-img';
-            slotEl.appendChild(img);
-
-            // 5. Advance
-            currentSlot++;
-            updateActiveSlot();
+            img.src = src;
+            img.className = 'slot-image';
+            slot.appendChild(img);
         }
 
-        function undo() {
-            if (currentSlot === 0) return;
-            currentSlot--;
-            images[currentSlot] = null;
-            updateActiveSlot();
-        }
-
-        function finish() {
-            uiControls.classList.add('hidden');
-            uiResult.classList.remove('hidden');
-        }
-
-        function downloadCollage() {
-            if (images.some(img => !img)) return;
-
-            const loadProms = images.map(src => {
-                return new Promise(resolve => {
-                    const i = new Image();
-                    i.onload = () => resolve(i);
-                    i.src = src;
-                });
-            });
-
-            Promise.all(loadProms).then(imgs => {
-                // Create vertical strip
-                // We normalize all images to the width of the widest image
-                const maxW = Math.max(...imgs.map(i => i.naturalWidth));
-                
-                // Calculate total height needed based on scaled images
-                let totalH = 0;
-                const scaledHeights = imgs.map(img => {
-                    const scale = maxW / img.naturalWidth;
-                    const h = img.naturalHeight * scale;
-                    totalH += h;
-                    return h;
-                });
-
-                canvas.width = maxW;
-                canvas.height = totalH;
-                const ctx = canvas.getContext('2d');
-                ctx.fillStyle = 'black';
-                ctx.fillRect(0, 0, maxW, totalH);
-
-                let currentY = 0;
-                imgs.forEach((img, idx) => {
-                    const h = scaledHeights[idx];
-                    ctx.drawImage(img, 0, currentY, maxW, h);
-                    currentY += h;
-                });
-
-                // Download
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/jpeg', 0.95);
-                link.download = `TriGrid_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.jpg`;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            });
+        function checkCompletion() {
+            const count = images.filter(i => i !== null).length;
+            statusText.innerText = `${count} / 3`;
+            
+            if (count === 3) {
+                downloadBtn.classList.remove('btn-disabled');
+            } else {
+                downloadBtn.classList.add('btn-disabled');
+            }
         }
 
         function resetApp() {
-            // Clear images
-            document.querySelectorAll('.captured-img').forEach(el => el.remove());
-            images = [null, null, null];
-            currentSlot = 0;
-
-            uiResult.classList.add('hidden');
-            uiControls.classList.remove('hidden');
+            if(!confirm('確定要清空所有照片嗎？')) return;
             
-            video.play();
-            updateActiveSlot();
+            images = [null, null, null];
+            slots.forEach(slot => {
+                const img = slot.querySelector('.slot-image');
+                if (img) img.remove();
+                const emptyState = slot.querySelector('.empty-state');
+                if (emptyState) emptyState.style.display = 'flex';
+            });
+            checkCompletion();
+        }
+
+        // 3. 拼貼生成 (核心邏輯：視覺裁切 Visual Crop)
+        // 為了達到 WYSIWYG，我們必須裁切照片的中心部分，使其比例符合格子比例
+        async function downloadCollage() {
+            if (images.some(i => i === null)) return;
+
+            downloadBtn.innerText = '處理中...';
+            
+            const canvas = document.getElementById('canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // 載入所有圖片
+            const imgObjects = await Promise.all(images.map(src => loadImage(src)));
+            
+            // 我們假設最終寬度為 1080px (高品質)
+            const finalWidth = 1080;
+            
+            // 計算每個格子在螢幕上的長寬比 (Visual Aspect Ratio)
+            // 因為是均分三格，每個格子的高度是寬度的 1/3 左右 (視螢幕而定)
+            // 為了簡化且美觀，我們強制設定拼貼結果為 9:16 的直式海報
+            // 所以整張圖是 1080x1920，每一格就是 1080x640
+            
+            const slotHeight = 640; // 1920 / 3
+            const totalHeight = 1920;
+            
+            canvas.width = finalWidth;
+            canvas.height = totalHeight;
+            
+            // 填滿黑色背景
+            ctx.fillStyle = 'black';
+            ctx.fillRect(0, 0, finalWidth, totalHeight);
+            
+            // 繪製每一格
+            imgObjects.forEach((img, index) => {
+                // 目標：從原圖(img)中裁切出一塊，填滿 1080x640 的區域 (Center Crop)
+                
+                const targetRatio = finalWidth / slotHeight; // 1080 / 640 ≈ 1.68
+                const imgRatio = img.naturalWidth / img.naturalHeight;
+                
+                let sW, sH, sX, sY;
+                
+                if (imgRatio > targetRatio) {
+                    // 圖片比格子寬 (Landscape vs Portrait slot) -> 裁掉左右
+                    sH = img.naturalHeight;
+                    sW = sH * targetRatio;
+                    sX = (img.naturalWidth - sW) / 2;
+                    sY = 0;
+                } else {
+                    // 圖片比格子高 (Portrait vs Landscape slot) -> 裁掉上下
+                    sW = img.naturalWidth;
+                    sH = sW / targetRatio;
+                    sX = 0;
+                    sY = (img.naturalHeight - sH) / 2;
+                }
+                
+                // 繪製到 Canvas 的對應位置
+                const destY = index * slotHeight;
+                
+                ctx.drawImage(
+                    img, 
+                    sX, sY, sW, sH, // Source crop
+                    0, destY, finalWidth, slotHeight // Destination
+                );
+                
+                // 畫分割線 (可選)
+                if (index > 0) {
+                    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+                    ctx.fillRect(0, destY, finalWidth, 2); // 2px 線條
+                }
+            });
+            
+            // 下載
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+            link.download = `TriGrid_${timestamp}.jpg`;
+            link.href = canvas.toDataURL('image/jpeg', 0.95);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            downloadBtn.innerHTML = '<i data-lucide="download" class="w-5 h-5"></i><span>儲存拼貼</span>';
+            lucide.createIcons();
+        }
+
+        function loadImage(src) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.src = src;
+            });
         }
     </script>
 </body>
 </html>
+    
