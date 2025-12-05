@@ -24,18 +24,21 @@
             overscroll-behavior: none;
             -webkit-tap-highlight-color: transparent;
             height: 100dvh;
-            display: flex;
-            flex-direction: column;
+            width: 100vw;
+            margin: 0;
+            overflow: hidden;
+            /* 移除 Flex Column，讓 Grid 佔滿全螢幕 */
         }
 
-        /* 網格容器 */
+        /* 網格容器 - 佔滿 100% */
         #grid-container {
-            flex: 1;
             display: grid;
             grid-template-rows: 1fr 1fr 1fr;
             width: 100%;
+            height: 100%;
             background: #000;
             position: relative;
+            z-index: 1; /* 底層 */
         }
 
         /* 格子樣式 */
@@ -43,7 +46,7 @@
             position: relative;
             width: 100%;
             height: 100%;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
             overflow: hidden;
             display: flex;
             align-items: center;
@@ -77,7 +80,6 @@
             inset: 0;
             z-index: 20;
             background: transparent;
-            /* 讓游標顯示為十字，暗示可對焦 */
             cursor: crosshair; 
         }
 
@@ -120,33 +122,44 @@
             text-transform: uppercase;
         }
 
-        /* 底部控制列 (全新設計) */
+        /* 底部控制列 (懸浮疊加) */
         #bottom-controls {
-            height: 120px; /* 固定高度容納大按鈕 */
-            background: #000;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 140px; /* 足夠的高度讓漸層自然 */
             padding-bottom: env(safe-area-inset-bottom, 20px);
+            
             display: flex;
             justify-content: space-around;
             align-items: center;
-            position: relative;
-            z-index: 50;
+            
+            /* 漸層背景：從底部黑色漸變到透明 */
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
+            
+            z-index: 50; /* 最上層 */
+            pointer-events: none; /* 讓點擊穿透背景，只在按鈕上生效 */
         }
 
         /* 兩側功能按鈕 */
         .side-btn {
-            width: 48px;
-            height: 48px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
-            background: #222;
+            background: rgba(0, 0, 0, 0.5); /* 半透明黑底 */
+            backdrop-filter: blur(4px);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            pointer-events: auto; /* 恢復點擊 */
+            border: 1px solid rgba(255,255,255,0.2);
         }
         .side-btn:active {
             transform: scale(0.9);
-            background: #333;
+            background: rgba(0, 0, 0, 0.8);
         }
         .side-btn.disabled {
             opacity: 0.3;
@@ -155,24 +168,27 @@
         .side-btn.highlight {
             background: white;
             color: black;
+            border-color: white;
         }
 
         /* 中央大快門鈕 */
         #shutter-trigger {
-            width: 72px;
-            height: 72px;
+            width: 76px;
+            height: 76px;
             border-radius: 50%;
             border: 4px solid white;
-            background-color: transparent;
+            background-color: rgba(255,255,255,0.1); /* 微微透明 */
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             transition: all 0.1s;
+            pointer-events: auto; /* 恢復點擊 */
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
         }
         #shutter-trigger .inner-circle {
-            width: 60px;
-            height: 60px;
+            width: 64px;
+            height: 64px;
             border-radius: 50%;
             background-color: #fff;
             transition: all 0.2s;
@@ -180,19 +196,19 @@
         
         /* 快門按下狀態 */
         #shutter-trigger:active .inner-circle {
-            width: 50px;
-            height: 50px;
+            width: 54px;
+            height: 54px;
             background-color: #ccc;
         }
 
         /* 快門停用狀態 (無相機時) */
         #shutter-trigger.inactive {
-            opacity: 0.3;
+            opacity: 0.5;
             pointer-events: none;
-            border-color: #444;
+            border-color: rgba(255,255,255,0.3);
         }
         #shutter-trigger.inactive .inner-circle {
-            background-color: #444;
+            background-color: rgba(255,255,255,0.3);
         }
 
     </style>
@@ -224,11 +240,11 @@
         </div>
     </div>
 
-    <!-- 底部控制列 -->
+    <!-- 底部控制列 (懸浮) -->
     <div id="bottom-controls">
         <!-- 左側：重置 -->
         <button onclick="resetApp()" class="side-btn" aria-label="Reset">
-            <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
+            <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
         </button>
 
         <!-- 中央：快門 -->
@@ -238,7 +254,7 @@
 
         <!-- 右側：下載 -->
         <button id="download-btn" onclick="downloadCollage()" class="side-btn disabled" aria-label="Download">
-            <i data-lucide="check" class="w-8 h-8"></i>
+            <i data-lucide="check" class="w-6 h-6"></i>
         </button>
     </div>
 
@@ -317,7 +333,7 @@
 
                 video.srcObject = stream;
 
-                // 創建專門的對焦感應層 (取代之前的快門層)
+                // 創建專門的對焦感應層
                 const focusLayer = document.createElement('div');
                 focusLayer.className = 'focus-layer';
                 focusLayer.onclick = handleTapFocus;
@@ -419,11 +435,13 @@
             let sx, sy, sWidth, sHeight;
 
             if (videoRatio > slotRatio) {
+                // 影片比格子寬，裁切左右
                 sHeight = vh;
                 sWidth = vh * slotRatio;
                 sy = 0;
                 sx = (vw - sWidth) / 2;
             } else {
+                // 影片比格子高，裁切上下
                 sWidth = vw;
                 sHeight = vw / slotRatio;
                 sx = 0;
@@ -465,7 +483,9 @@
         }
 
         function resetApp() {
-            if(!confirm('確定要清空所有照片嗎？')) return;
+            if(images.some(i => i !== null)) {
+               if(!confirm('確定要清空所有照片嗎？')) return;
+            }
             
             if(activeStream) stopCamera();
 
