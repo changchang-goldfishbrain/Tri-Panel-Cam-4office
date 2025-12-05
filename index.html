@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
-    <title>Tri-Grid Inline</title>
+    <title>Tri-Grid Camera</title>
     
     <!-- Mobile Web App Config -->
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -35,6 +35,7 @@
             grid-template-rows: 1fr 1fr 1fr;
             width: 100%;
             background: #000;
+            position: relative;
         }
 
         /* 格子樣式 */
@@ -53,6 +54,11 @@
         .grid-slot:last-child {
             border-bottom: none;
         }
+        
+        /* 正在拍攝的格子高亮 */
+        .grid-slot.active-slot {
+            box-shadow: inset 0 0 0 2px #fbbf24; /* Amber border indication */
+        }
 
         /* 嵌入式相機與照片 */
         .slot-content {
@@ -65,43 +71,14 @@
             z-index: 10;
         }
 
-        /* 拍攝時的快門按鈕層 */
-        .camera-overlay {
+        /* 點擊對焦層 (透明) */
+        .focus-layer {
             position: absolute;
             inset: 0;
             z-index: 20;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: rgba(0,0,0,0.1); /* 輕微暗化提升對比 */
-            /* 讓點擊事件可以被 JS 捕捉用於對焦 */
+            background: transparent;
+            /* 讓游標顯示為十字，暗示可對焦 */
             cursor: crosshair; 
-        }
-
-        /* 快門按鈕 */
-        .shutter-btn {
-            width: 72px;
-            height: 72px;
-            border-radius: 50%;
-            border: 4px solid white;
-            background-color: rgba(255, 255, 255, 0.3);
-            cursor: pointer;
-            transition: transform 0.1s, background-color 0.2s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            z-index: 30; /* 比 overlay 高 */
-        }
-        .shutter-btn:active {
-            transform: scale(0.95);
-            background-color: rgba(255, 255, 255, 0.8);
-        }
-        .shutter-inner {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background-color: #ff3b30; /* 經典紅點 */
-            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
 
         /* 對焦框動畫 */
@@ -132,7 +109,7 @@
             flex-direction: column;
             align-items: center;
             gap: 8px;
-            color: #666;
+            color: #444;
             z-index: 5;
             pointer-events: none;
         }
@@ -143,41 +120,81 @@
             text-transform: uppercase;
         }
 
-        /* 底部控制列 */
-        #toolbar {
-            height: auto;
-            min-height: 80px;
+        /* 底部控制列 (全新設計) */
+        #bottom-controls {
+            height: 120px; /* 固定高度容納大按鈕 */
             background: #000;
-            border-top: 1px solid #222;
-            padding: 20px;
             padding-bottom: env(safe-area-inset-bottom, 20px);
             display: flex;
-            justify-content: space-between;
+            justify-content: space-around;
             align-items: center;
+            position: relative;
+            z-index: 50;
         }
 
-        .btn-primary {
-            background: white;
-            color: black;
-            font-weight: bold;
-            padding: 12px 24px;
-            border-radius: 9999px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            box-shadow: 0 0 20px rgba(255,255,255,0.2);
-        }
-        .btn-secondary {
+        /* 兩側功能按鈕 */
+        .side-btn {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
             background: #222;
             color: white;
-            padding: 12px;
-            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
         }
-        .btn-disabled {
-            opacity: 0.5;
+        .side-btn:active {
+            transform: scale(0.9);
+            background: #333;
+        }
+        .side-btn.disabled {
+            opacity: 0.3;
             pointer-events: none;
-            box-shadow: none;
         }
+        .side-btn.highlight {
+            background: white;
+            color: black;
+        }
+
+        /* 中央大快門鈕 */
+        #shutter-trigger {
+            width: 72px;
+            height: 72px;
+            border-radius: 50%;
+            border: 4px solid white;
+            background-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.1s;
+        }
+        #shutter-trigger .inner-circle {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background-color: #fff;
+            transition: all 0.2s;
+        }
+        
+        /* 快門按下狀態 */
+        #shutter-trigger:active .inner-circle {
+            width: 50px;
+            height: 50px;
+            background-color: #ccc;
+        }
+
+        /* 快門停用狀態 (無相機時) */
+        #shutter-trigger.inactive {
+            opacity: 0.3;
+            pointer-events: none;
+            border-color: #444;
+        }
+        #shutter-trigger.inactive .inner-circle {
+            background-color: #444;
+        }
+
     </style>
 </head>
 <body>
@@ -187,37 +204,41 @@
         <!-- 上 -->
         <div class="grid-slot" id="slot-0" onclick="startCamera(0)">
             <div class="empty-state">
-                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Shoot</span>
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
             </div>
         </div>
         <!-- 中 -->
         <div class="grid-slot" id="slot-1" onclick="startCamera(1)">
             <div class="empty-state">
-                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Shoot</span>
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
             </div>
         </div>
         <!-- 下 -->
         <div class="grid-slot" id="slot-2" onclick="startCamera(2)">
             <div class="empty-state">
-                <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
-                <span>Tap to Shoot</span>
+                <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                <span>Tap to Add</span>
             </div>
         </div>
     </div>
 
-    <!-- 底部工具列 -->
-    <div id="toolbar">
-        <button onclick="resetApp()" class="btn-secondary">
-            <i data-lucide="refresh-cw" class="w-6 h-6"></i>
+    <!-- 底部控制列 -->
+    <div id="bottom-controls">
+        <!-- 左側：重置 -->
+        <button onclick="resetApp()" class="side-btn" aria-label="Reset">
+            <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
         </button>
 
-        <div class="text-xs text-gray-500 font-mono" id="status-text">0 / 3</div>
+        <!-- 中央：快門 -->
+        <div id="shutter-trigger" class="inactive" onclick="takePhoto()">
+            <div class="inner-circle"></div>
+        </div>
 
-        <button id="download-btn" onclick="downloadCollage()" class="btn-primary btn-disabled">
-            <i data-lucide="download" class="w-5 h-5"></i>
-            <span>儲存拼貼</span>
+        <!-- 右側：下載 -->
+        <button id="download-btn" onclick="downloadCollage()" class="side-btn disabled" aria-label="Download">
+            <i data-lucide="check" class="w-8 h-8"></i>
         </button>
     </div>
 
@@ -239,8 +260,8 @@
             document.getElementById('slot-1'),
             document.getElementById('slot-2')
         ];
+        const shutterBtn = document.getElementById('shutter-trigger');
         const downloadBtn = document.getElementById('download-btn');
-        const statusText = document.getElementById('status-text');
 
         // 1. 啟動嵌入式相機
         async function startCamera(index) {
@@ -255,6 +276,13 @@
             activeSlotIndex = index;
             const slot = slots[index];
 
+            // UI 反饋：標記當前格子
+            slots.forEach(s => s.classList.remove('active-slot'));
+            slot.classList.add('active-slot');
+
+            // 啟用快門
+            shutterBtn.classList.remove('inactive');
+
             try {
                 // 創建 Video 元素
                 const video = document.createElement('video');
@@ -263,13 +291,12 @@
                 video.muted = true;
                 video.className = 'slot-content'; // object-fit: cover
                 
-                // 請求相機權限 (優先使用後置鏡頭，高清，連續對焦)
+                // 請求相機權限
                 const constraints = {
                     video: {
                         facingMode: 'environment',
                         width: { ideal: 1920 }, 
                         height: { ideal: 1080 },
-                        // 嘗試請求連續對焦模式
                         advanced: [{ focusMode: 'continuous' }]
                     },
                     audio: false
@@ -280,7 +307,7 @@
                 activeStream = stream;
                 activeTrack = stream.getVideoTracks()[0];
 
-                // 嘗試應用對焦設定 (部分 Android 支援)
+                // 嘗試應用對焦設定
                 const capabilities = activeTrack.getCapabilities();
                 if (capabilities.focusMode && capabilities.focusMode.includes('continuous')) {
                     activeTrack.applyConstraints({
@@ -290,39 +317,29 @@
 
                 video.srcObject = stream;
 
-                // 創建快門按鈕覆蓋層 (含對焦功能)
-                const overlay = document.createElement('div');
-                overlay.className = 'camera-overlay';
-                // 點擊覆蓋層任意處觸發對焦
-                overlay.onclick = handleTapFocus;
-                
-                overlay.innerHTML = `
-                    <div class="shutter-btn" onclick="takePhoto(event)">
-                        <div class="shutter-inner"></div>
-                    </div>
-                `;
+                // 創建專門的對焦感應層 (取代之前的快門層)
+                const focusLayer = document.createElement('div');
+                focusLayer.className = 'focus-layer';
+                focusLayer.onclick = handleTapFocus;
 
                 // 清空格子並插入相機
                 slot.innerHTML = '';
                 slot.appendChild(video);
-                slot.appendChild(overlay);
+                slot.appendChild(focusLayer);
 
             } catch (err) {
                 console.error("相機啟動失敗", err);
-                alert("無法啟動相機，請確認瀏覽器權限 (需要 HTTPS 或 Localhost)");
-                activeSlotIndex = -1;
+                alert("無法啟動相機，請確認權限");
+                stopCamera();
             }
         }
 
-        // 2. 處理點擊對焦 (模擬)
+        // 2. 處理點擊對焦
         function handleTapFocus(event) {
-            // 如果點到的是快門按鈕，不執行對焦
-            if (event.target.closest('.shutter-btn')) return;
-
             const slot = slots[activeSlotIndex];
             if (!slot) return;
 
-            // 1. 視覺回饋：創建黃色對焦框
+            // 1. 視覺回饋
             const rect = slot.getBoundingClientRect();
             const x = event.clientX - rect.left;
             const y = event.clientY - rect.top;
@@ -333,18 +350,12 @@
             focusBox.style.top = y + 'px';
             slot.appendChild(focusBox);
 
-            // 動畫結束後移除
-            setTimeout(() => {
-                focusBox.remove();
-            }, 800);
+            setTimeout(() => focusBox.remove(), 800);
 
-            // 2. 嘗試觸發硬體重對焦 (若瀏覽器支援)
-            // 原理：切換一下模式可能會觸發相機重新測距
+            // 2. 嘗試觸發硬體重對焦
             if (activeTrack) {
                 const capabilities = activeTrack.getCapabilities();
-                // 只有在支援 focusMode 時才嘗試
                 if (capabilities.focusMode && capabilities.focusMode.includes('continuous') && capabilities.focusMode.includes('auto')) {
-                   // 這種切換有時能強迫鏡頭重新尋找焦點
                    activeTrack.applyConstraints({ advanced: [{ focusMode: 'auto' }] })
                        .then(() => {
                            setTimeout(() => {
@@ -362,13 +373,20 @@
                 activeStream = null;
                 activeTrack = null;
             }
+            
+            // 移除 active 樣式
+            slots.forEach(s => s.classList.remove('active-slot'));
+            
+            // 停用快門
+            shutterBtn.classList.add('inactive');
+
             // 如果當前格子還沒拍到照片(中途取消)，恢復 Empty State
             if (activeSlotIndex !== -1 && !images[activeSlotIndex]) {
                 const slot = slots[activeSlotIndex];
                 slot.innerHTML = `
                     <div class="empty-state">
-                        <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
-                        <span>Tap to Shoot</span>
+                        <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                        <span>Tap to Add</span>
                     </div>
                 `;
                 lucide.createIcons();
@@ -377,9 +395,7 @@
         }
 
         // 4. 拍照 (WYSIWYG 核心邏輯)
-        function takePhoto(event) {
-            event.stopPropagation(); // 防止冒泡觸發 handleTapFocus
-
+        function takePhoto() {
             if (activeSlotIndex === -1 || !activeStream) return;
 
             const slot = slots[activeSlotIndex];
@@ -391,56 +407,46 @@
             const canvas = document.createElement('canvas');
             const ctx = canvas.getContext('2d');
 
-            // --- 裁切演算法 (所見即所得) ---
-            // 1. 取得實際影片尺寸
+            // --- 裁切演算法 ---
             const vw = video.videoWidth;
             const vh = video.videoHeight;
-            
-            // 2. 取得格子顯示尺寸
             const sw = slot.clientWidth;
             const sh = slot.clientHeight;
 
-            // 3. 計算格子比例 與 影片比例
             const slotRatio = sw / sh;
             const videoRatio = vw / vh;
 
             let sx, sy, sWidth, sHeight;
 
-            // 4. 模擬 object-fit: cover 的裁切行為
             if (videoRatio > slotRatio) {
-                // 影片比格子寬 -> 影片高度完整顯示，左右裁切
                 sHeight = vh;
-                sWidth = vh * slotRatio; // 根據格子比例算出應該取多寬
+                sWidth = vh * slotRatio;
                 sy = 0;
-                sx = (vw - sWidth) / 2; // 取中間
+                sx = (vw - sWidth) / 2;
             } else {
-                // 影片比格子高 -> 影片寬度完整顯示，上下裁切
                 sWidth = vw;
-                sHeight = vw / slotRatio; // 根據格子比例算出應該取多高
+                sHeight = vw / slotRatio;
                 sx = 0;
-                sy = (vh - sHeight) / 2; // 取中間
+                sy = (vh - sHeight) / 2;
             }
 
-            // 5. 設定 Canvas 輸出尺寸 (高畫質)
-            // 我們希望輸出的圖片解析度足夠高，取裁切區的原始像素大小
+            // 高畫質輸出
             canvas.width = sWidth;
             canvas.height = sHeight;
 
-            // 6. 繪製
             ctx.drawImage(video, sx, sy, sWidth, sHeight, 0, 0, sWidth, sHeight);
 
-            // 7. 轉為圖片
             const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
             images[activeSlotIndex] = dataUrl;
 
-            // 8. 停止相機並顯示圖片
-            stopCamera(); // 停止串流
+            // 停止相機並顯示圖片
+            stopCamera();
             
-            // 9. 更新 UI 為靜態圖片
-            slot.innerHTML = ''; // 清除 video
+            // 更新 UI
             const img = document.createElement('img');
             img.src = dataUrl;
             img.className = 'slot-content';
+            slot.innerHTML = '';
             slot.appendChild(img);
 
             checkCompletion();
@@ -448,27 +454,27 @@
 
         function checkCompletion() {
             const count = images.filter(i => i !== null).length;
-            statusText.innerText = `${count} / 3`;
             
             if (count === 3) {
-                downloadBtn.classList.remove('btn-disabled');
+                downloadBtn.classList.remove('disabled');
+                downloadBtn.classList.add('highlight');
             } else {
-                downloadBtn.classList.add('btn-disabled');
+                downloadBtn.classList.add('disabled');
+                downloadBtn.classList.remove('highlight');
             }
         }
 
         function resetApp() {
             if(!confirm('確定要清空所有照片嗎？')) return;
             
-            // 停止任何正在運行的相機
             if(activeStream) stopCamera();
 
             images = [null, null, null];
             slots.forEach(slot => {
                 slot.innerHTML = `
                     <div class="empty-state">
-                        <i data-lucide="camera" class="w-8 h-8 opacity-50"></i>
-                        <span>Tap to Shoot</span>
+                        <i data-lucide="plus" class="w-8 h-8 opacity-50"></i>
+                        <span>Tap to Add</span>
                     </div>
                 `;
             });
@@ -480,23 +486,20 @@
         async function downloadCollage() {
             if (images.some(i => i === null)) return;
 
-            const btnContent = downloadBtn.innerHTML;
-            downloadBtn.innerText = '處理中...';
+            // 視覺回饋
+            const originalIcon = downloadBtn.innerHTML;
+            downloadBtn.innerHTML = '<i data-lucide="loader" class="w-8 h-8 animate-spin"></i>';
+            lucide.createIcons();
             
             const canvas = document.getElementById('canvas');
             const ctx = canvas.getContext('2d');
             
-            // 載入圖片物件
             const imgObjects = await Promise.all(images.map(src => loadImage(src)));
             
-            // 設定輸出總寬度 (例如 1080px)
+            // 設定輸出寬度 1080px
             const finalWidth = 1080;
             
-            // 計算總高度：
-            // 因為我們在拍照時已經按照格子的比例裁切好了 (WYSIWYG)
-            // 所以我們只需要把三張圖按比例縮放後垂直堆疊即可
-            
-            // 計算縮放後的高度總和
+            // 計算總高度
             let totalHeight = 0;
             const scaledHeights = imgObjects.map(img => {
                 const scale = finalWidth / img.naturalWidth;
@@ -515,8 +518,7 @@
             imgObjects.forEach((img, i) => {
                 const h = scaledHeights[i];
                 ctx.drawImage(img, 0, currentY, finalWidth, h);
-                
-                // 分割線
+                // 細微分割線
                 if (i > 0) {
                     ctx.fillStyle = 'rgba(255,255,255,0.1)';
                     ctx.fillRect(0, currentY, finalWidth, 2);
@@ -533,7 +535,8 @@
             link.click();
             document.body.removeChild(link);
             
-            downloadBtn.innerHTML = btnContent;
+            // 恢復按鈕
+            downloadBtn.innerHTML = originalIcon;
         }
 
         function loadImage(src) {
