@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -22,7 +23,7 @@
             color: white;
             overscroll-behavior: none;
             -webkit-tap-highlight-color: transparent;
-            height: 100dvh; /* Use dynamic viewport height */
+            height: 100dvh; /* Dynamic viewport height */
             overflow: hidden;
             display: flex;
             flex-direction: column;
@@ -43,46 +44,62 @@
             overflow: hidden;
             background-color: #1a1a1a;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .grid-slot:last-child {
             border-bottom: none;
         }
 
-        /* The Video Element (Moves between slots) */
+        /* The Video Element */
         video {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            object-position: center center; /* Crucial for WYSIWYG */
             position: absolute;
             inset: 0;
             z-index: 10;
+            display: block;
+            pointer-events: none;
         }
 
-        /* Captured Image (Replaces video) */
+        /* Captured Image */
         .captured-img {
             width: 100%;
             height: 100%;
             object-fit: cover;
+            object-position: center center;
             position: absolute;
             inset: 0;
             z-index: 20;
             display: block;
         }
 
-        /* Active Slot Indicator (Optional highlight) */
-        .slot-active::after {
+        /* Active Slot Highlight & Guidelines */
+        .slot-active {
+            box-shadow: inset 0 0 0 2px rgba(255, 215, 0, 0.5); /* Gold tint for active */
+        }
+        
+        /* Rule of thirds grid for active slot */
+        .slot-active::before {
             content: '';
             position: absolute;
             inset: 0;
-            border: 2px solid rgba(255, 255, 255, 0.3);
             pointer-events: none;
             z-index: 30;
+            background-image: 
+                linear-gradient(to right, rgba(255,255,255,0.2) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px);
+            background-size: 33.33% 33.33%;
+            opacity: 0.5;
         }
 
         /* Animations */
         @keyframes flash {
             0% { background-color: white; opacity: 0; }
-            20% { opacity: 0.6; }
+            20% { opacity: 0.8; }
             100% { opacity: 0; }
         }
         .flash-overlay {
@@ -92,42 +109,46 @@
             z-index: 50;
         }
         .animate-flash {
-            animation: flash 0.3s ease-out;
+            animation: flash 0.25s ease-out;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
         }
 
         /* UI Overlay */
         #ui-layer {
             position: absolute;
             inset: 0;
-            pointer-events: none; /* Let clicks pass through to grid if needed */
+            pointer-events: none;
             z-index: 40;
             display: flex;
             flex-direction: column;
             justify-content: flex-end;
-            padding-bottom: env(safe-area-inset-bottom, 24px);
+            padding-bottom: env(safe-area-inset-bottom, 20px);
         }
 
         /* Controls */
         .control-btn {
             pointer-events: auto;
-            transition: transform 0.1s;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         }
         .control-btn:active {
-            transform: scale(0.95);
+            transform: scale(0.9);
         }
     </style>
 </head>
 <body>
 
-    <!-- Main App Area -->
+    <!-- Main Grid -->
     <div id="grid-container">
-        <!-- Slots will be injected here -->
         <div id="slot-0" class="grid-slot" onclick="handleSlotClick(0)"></div>
         <div id="slot-1" class="grid-slot" onclick="handleSlotClick(1)"></div>
         <div id="slot-2" class="grid-slot" onclick="handleSlotClick(2)"></div>
     </div>
 
-    <!-- Video Element (Initially detached or in slot 0) -->
+    <!-- Video Element (Detached initially) -->
     <video id="videoElement" autoplay playsinline muted style="display: none;"></video>
 
     <!-- UI Overlay -->
@@ -135,58 +156,65 @@
         
         <!-- Start Screen -->
         <div id="start-screen" class="absolute inset-0 bg-black flex flex-col items-center justify-center pointer-events-auto z-50">
-            <h1 class="text-3xl font-light tracking-widest mb-2">TRI-GRID</h1>
-            <p class="text-zinc-500 text-xs mb-8 tracking-wider">VERTICAL COLLAGE CAM</p>
-            <button onclick="startCamera()" class="bg-white text-black px-8 py-3 rounded-full font-bold flex items-center gap-2 hover:bg-zinc-200 transition-colors">
+            <div class="mb-8 relative">
+                <div class="w-16 h-24 border-2 border-white/30 rounded grid grid-rows-3 overflow-hidden">
+                    <div class="bg-white/10 border-b border-white/10"></div>
+                    <div class="bg-white/10 border-b border-white/10"></div>
+                    <div class="bg-white/10"></div>
+                </div>
+            </div>
+            <h1 class="text-3xl font-bold tracking-tight mb-2">TRI-GRID</h1>
+            <p class="text-zinc-400 text-sm mb-10 tracking-wide">垂直三格拼貼相機</p>
+            <button onclick="startCamera()" class="bg-white text-black px-10 py-4 rounded-full font-bold text-lg flex items-center gap-2 hover:bg-zinc-200 transition-colors shadow-[0_0_20px_rgba(255,255,255,0.3)]">
                 <i data-lucide="camera" class="w-5 h-5"></i>
                 開始拍攝
             </button>
         </div>
 
-        <!-- Controls (Hidden initially) -->
-        <div id="controls" class="hidden w-full px-10 py-6 flex justify-between items-center bg-gradient-to-t from-black/80 to-transparent">
+        <!-- Controls -->
+        <div id="controls" class="hidden w-full px-8 py-8 flex justify-between items-center bg-gradient-to-t from-black via-black/50 to-transparent">
             
-            <!-- Undo / Back -->
-            <button onclick="undo()" class="control-btn text-white/80 p-4 rounded-full bg-black/20 backdrop-blur-md hover:bg-white/20">
+            <!-- Undo -->
+            <button onclick="undo()" class="control-btn text-white/90 p-4 rounded-full bg-white/10 backdrop-blur-md hover:bg-white/20 border border-white/10">
                 <i data-lucide="rotate-ccw" class="w-6 h-6"></i>
             </button>
 
-            <!-- Shutter Button -->
-            <button id="shutter-btn" onclick="capture()" class="control-btn w-20 h-20 rounded-full border-4 border-white flex items-center justify-center shadow-lg shadow-black/30">
-                <div class="w-16 h-16 bg-white rounded-full"></div>
+            <!-- Shutter -->
+            <button id="shutter-btn" onclick="capture()" class="control-btn relative w-20 h-20 rounded-full border-[5px] border-white/30 flex items-center justify-center shadow-lg">
+                <div class="w-16 h-16 bg-white rounded-full transition-transform duration-100"></div>
             </button>
 
-            <!-- Done / Check (Shows when finished) -->
-            <button id="done-btn" onclick="finish()" class="control-btn text-white p-4 rounded-full bg-green-500/80 backdrop-blur-md hidden">
-                <i data-lucide="check" class="w-8 h-8"></i>
+            <!-- Done (Replaces Shutter when full) -->
+            <button id="done-btn" onclick="finish()" class="hidden control-btn bg-green-500 text-white w-20 h-20 rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(34,197,94,0.4)]">
+                <i data-lucide="check" class="w-10 h-10"></i>
             </button>
 
-            <!-- Placeholder for spacing when Done is hidden -->
-            <div id="spacer-right" class="w-14"></div>
+            <!-- Spacer/Placeholder -->
+            <div class="w-[58px]"></div> 
         </div>
 
-        <!-- Result Actions (Hidden initially) -->
-        <div id="result-actions" class="hidden absolute bottom-0 w-full p-6 pb-12 bg-black/90 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 pointer-events-auto z-50 animate-[slideUp_0.3s_ease-out]">
-            <p class="text-center text-zinc-400 text-xs mb-2">預覽模式</p>
-            <button onclick="downloadCollage()" class="w-full bg-white text-black py-4 rounded-xl font-bold flex items-center justify-center gap-2">
+        <!-- Result Actions -->
+        <div id="result-actions" class="hidden absolute bottom-0 left-0 right-0 p-6 pb-10 bg-black/90 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3 pointer-events-auto z-50 animate-[slideUp_0.3s_ease-out]">
+            <h3 class="text-center text-white font-semibold mb-2">拼貼完成</h3>
+            <button onclick="downloadCollage()" class="w-full bg-white text-black py-4 rounded-xl font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
                 <i data-lucide="download" class="w-5 h-5"></i>
                 儲存照片
             </button>
-            <button onclick="resetApp()" class="w-full bg-zinc-800 text-white py-4 rounded-xl font-medium flex items-center justify-center gap-2">
+            <button onclick="resetApp()" class="w-full bg-zinc-800 text-white py-4 rounded-xl font-medium flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
                 <i data-lucide="refresh-cw" class="w-5 h-5"></i>
                 重新開始
             </button>
         </div>
     </div>
 
-    <!-- Hidden Canvas for processing -->
+    <!-- Hidden Canvas -->
     <canvas id="processCanvas" class="hidden"></canvas>
 
     <script>
         // --- State ---
         let stream = null;
-        let currentSlot = 0; // 0, 1, 2
-        let images = [null, null, null]; // Stores Data URLs
+        let currentSlot = 0; 
+        let images = [null, null, null]; // DataURLs
         const totalSlots = 3;
 
         // Elements
@@ -197,22 +225,24 @@
         const uiResult = document.getElementById('result-actions');
         const shutterBtn = document.getElementById('shutter-btn');
         const doneBtn = document.getElementById('done-btn');
-        const spacerRight = document.getElementById('spacer-right');
         const slots = [
             document.getElementById('slot-0'),
             document.getElementById('slot-1'),
             document.getElementById('slot-2')
         ];
 
+        // Initialize Icons
+        lucide.createIcons();
+
         // --- Core Functions ---
 
         async function startCamera() {
             try {
-                // Request higher resolution for better crop quality
+                // Request best resolution
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1920 },
+                        width: { ideal: 1920 }, // High res for quality crop
                         height: { ideal: 1080 }
                     },
                     audio: false
@@ -221,7 +251,6 @@
                 video.srcObject = stream;
                 video.style.display = 'block';
                 
-                // Wait for video to be ready
                 video.onloadedmetadata = () => {
                     video.play();
                     uiStart.classList.add('hidden');
@@ -230,42 +259,42 @@
                 };
 
             } catch (err) {
-                console.error(err);
-                alert('無法啟動相機，請檢查權限。');
+                console.error("Camera Error:", err);
+                alert('無法啟動相機。請確保使用 Safari (iOS) 或 Chrome (Android) 並允許權限。');
             }
         }
 
         function updateActiveSlot() {
-            // Remove video from wherever it is
+            // Clean up old video position
             if (video.parentElement) {
                 video.parentElement.removeChild(video);
             }
 
-            // Clean up UI
-            shutterBtn.classList.remove('hidden');
-            doneBtn.classList.add('hidden');
-            spacerRight.classList.remove('hidden');
-
-            // If we have slots left
+            // Update UI State
             if (currentSlot < totalSlots) {
                 const slotEl = slots[currentSlot];
                 
-                // Remove existing image if any (for retakes)
+                // Remove preview image if any (retaking)
                 const existingImg = slotEl.querySelector('.captured-img');
                 if (existingImg) existingImg.remove();
 
-                // Add video to current slot
+                // Move video to slot
                 slotEl.appendChild(video);
+                video.play();
                 
                 // Highlight
                 slots.forEach(s => s.classList.remove('slot-active'));
                 slotEl.classList.add('slot-active');
+                
+                // Buttons
+                shutterBtn.classList.remove('hidden');
+                doneBtn.classList.add('hidden');
             } else {
-                // All slots full
+                // Done state
+                slots.forEach(s => s.classList.remove('slot-active'));
                 video.pause();
                 shutterBtn.classList.add('hidden');
                 doneBtn.classList.remove('hidden');
-                spacerRight.classList.add('hidden');
             }
         }
 
@@ -274,135 +303,78 @@
 
             const slotEl = slots[currentSlot];
             
-            // Visual Flash
+            // 1. Visual Effect
             const flash = document.createElement('div');
             flash.className = 'flash-overlay animate-flash';
             slotEl.appendChild(flash);
-            setTimeout(() => flash.remove(), 500);
+            setTimeout(() => flash.remove(), 300);
 
-            // 1. Calculate Crop
-            // The video is object-fit: cover inside the slot.
-            // We need to draw exactly what the user sees onto a canvas.
+            // 2. WYSIWYG Capture Logic
+            // We need to calculate exactly what portion of the video is visible in the slot.
+            // CSS object-fit: cover + object-position: center.
+
+            const videoW = video.videoWidth;
+            const videoH = video.videoHeight;
+            const slotW = slotEl.clientWidth;   // Inner width (no border)
+            const slotH = slotEl.clientHeight;  // Inner height
+
+            // Calculate the scaling factor CSS applied to the video
+            // Cover means the image is scaled so that BOTH dimensions are >= container
+            const scale = Math.max(slotW / videoW, slotH / videoH);
+
+            // The rendered size of the video in pixels on screen
+            const renderedW = videoW * scale;
+            const renderedH = videoH * scale;
+
+            // Calculate how much of the video is "overflowing" (hidden)
+            // Since object-position is center, overflow is distributed evenly
+            const overflowX = (renderedW - slotW) / 2;
+            const overflowY = (renderedH - slotH) / 2;
+
+            // Map the visible area back to the Source Video Coordinates
+            // sourceX = overflowX / scale
+            const srcX = overflowX / scale;
+            const srcY = overflowY / scale;
+            const srcW = slotW / scale;
+            const srcH = slotH / scale;
+
+            // 3. Draw to Canvas
+            canvas.width = srcW;  // Or scale up for quality? Let's keep 1:1 with source
+            canvas.height = srcH;
+            const ctx = canvas.getContext('2d');
             
-            const rect = slotEl.getBoundingClientRect();
-            const slotWidth = rect.width;
-            const slotHeight = rect.height;
-            const slotAspect = slotWidth / slotHeight;
+            // Draw only the visible portion
+            ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
 
-            const videoWidth = video.videoWidth;
-            const videoHeight = video.videoHeight;
-            const videoAspect = videoWidth / videoHeight;
+            // 4. Save and Show
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+            images[currentSlot] = dataUrl;
 
-            let renderW, renderH, offsetX, offsetY;
+            const img = document.createElement('img');
+            img.src = dataUrl;
+            img.className = 'captured-img';
+            slotEl.appendChild(img);
 
-            // Logic matching object-fit: cover
-            if (slotAspect > videoAspect) {
-                // Slot is wider than video (relative to height) -> Video fills width, cropped top/bottom? 
-                // Wait: Cover means fill the container.
-                // If Slot is 'more landscape' than video, we fit width and crop height? No.
-                // If Slot (e.g. 3:1) is wider than Video (16:9), we scale video to match Slot Width, and crop height.
-                
-                // Actually easier logic:
-                // Scale factor to make the SMALLER dimension match the container
-                const scale = Math.max(slotWidth / videoWidth, slotHeight / videoHeight);
-                
-                // But we want to crop the SOURCE video, not scale the canvas.
-                // Let's project the slot dimensions back onto the video source coordinates.
-                
-                if (videoAspect > slotAspect) {
-                     // Video is wider than slot. Height matches (scaled). Crop sides.
-                     // Source Height = Video Height
-                     // Source Width = Video Height * SlotAspect
-                     const srcH = videoHeight;
-                     const srcW = videoHeight * slotAspect;
-                     const srcX = (videoWidth - srcW) / 2;
-                     const srcY = 0;
-                     
-                     renderToCanvas(srcX, srcY, srcW, srcH);
-                } else {
-                     // Video is taller than slot. Width matches. Crop top/bottom.
-                     const srcW = videoWidth;
-                     const srcH = videoWidth / slotAspect;
-                     const srcX = 0;
-                     const srcY = (videoHeight - srcH) / 2;
-                     
-                     renderToCanvas(srcX, srcY, srcW, srcH);
-                }
-
-            } else {
-                 // Slot is narrower/taller. 
-                 // Same logic covers all cases actually:
-                 if (videoAspect > slotAspect) {
-                     // Video wider -> Crop X
-                     const srcH = videoHeight;
-                     const srcW = videoHeight * slotAspect;
-                     const srcX = (videoWidth - srcW) / 2;
-                     const srcY = 0;
-                     renderToCanvas(srcX, srcY, srcW, srcH);
-                 } else {
-                     // Video taller -> Crop Y
-                     const srcW = videoWidth;
-                     const srcH = videoWidth / slotAspect;
-                     const srcX = 0;
-                     const srcY = (videoHeight - srcH) / 2;
-                     renderToCanvas(srcX, srcY, srcW, srcH);
-                 }
-            }
-
-            // Move to next
+            // 5. Advance
             currentSlot++;
             updateActiveSlot();
         }
 
-        function renderToCanvas(sx, sy, sw, sh) {
-            // Set canvas size to the cropped resolution (high quality)
-            canvas.width = sw;
-            canvas.height = sh;
-            const ctx = canvas.getContext('2d');
-            
-            // Draw cropped portion
-            ctx.drawImage(video, sx, sy, sw, sh, 0, 0, sw, sh);
-            
-            // Create Image Element
-            const dataUrl = canvas.toDataURL('image/png', 0.9);
-            images[currentSlot] = dataUrl; // Store for final stitch
-            
-            const img = document.createElement('img');
-            img.src = dataUrl;
-            img.className = 'captured-img';
-            
-            // Add to the slot we just captured
-            slots[currentSlot].appendChild(img);
-        }
-
         function undo() {
             if (currentSlot === 0) return;
-            
-            // If we were finished (Done button showing), hide it
-            if (currentSlot === totalSlots) {
-                // Just decrement, updateActiveSlot will handle UI
-            }
-            
             currentSlot--;
             images[currentSlot] = null;
-            updateActiveSlot(); // This puts video back into the slot
+            updateActiveSlot();
         }
 
         function finish() {
             uiControls.classList.add('hidden');
             uiResult.classList.remove('hidden');
-            // Stop camera to save battery
-            video.pause();
         }
 
         function downloadCollage() {
             if (images.some(img => !img)) return;
 
-            // Create final canvas
-            // Assume all images have same width (since slots are same width), but let's check.
-            // We'll use the width of the first image as base.
-            
-            // We need to load images to get natural dimensions
             const loadProms = images.map(src => {
                 return new Promise(resolve => {
                     const i = new Image();
@@ -412,25 +384,39 @@
             });
 
             Promise.all(loadProms).then(imgs => {
-                const totalW = imgs[0].naturalWidth;
-                const totalH = imgs.reduce((acc, img) => acc + img.naturalHeight, 0);
+                // Calculate total dimensions
+                // To avoid jagged edges, we find the max width
+                const maxW = Math.max(...imgs.map(i => i.naturalWidth));
+                // Total height is sum of heights (scaled to match max width if needed)
+                // Since slots are equal height in CSS, source crops should be similar, 
+                // but let's be safe and stack them exactly.
                 
-                canvas.width = totalW;
+                let totalH = 0;
+                imgs.forEach(img => {
+                    // If image width < maxW, we need to scale height proportionally? 
+                    // No, assume full width fill.
+                    const scale = maxW / img.naturalWidth;
+                    totalH += img.naturalHeight * scale;
+                });
+
+                canvas.width = maxW;
                 canvas.height = totalH;
                 const ctx = canvas.getContext('2d');
-                
-                let y = 0;
+                ctx.fillStyle = 'black';
+                ctx.fillRect(0, 0, maxW, totalH);
+
+                let currentY = 0;
                 imgs.forEach(img => {
-                    // Draw full width, keeping aspect
-                    // If dimensions differ slightly due to rounding, stretch to fit width
-                    ctx.drawImage(img, 0, y, totalW, img.naturalHeight);
-                    y += img.naturalHeight;
+                    const scale = maxW / img.naturalWidth;
+                    const drawH = img.naturalHeight * scale;
+                    ctx.drawImage(img, 0, currentY, maxW, drawH);
+                    currentY += drawH;
                 });
-                
+
                 // Download
                 const link = document.createElement('a');
-                link.href = canvas.toDataURL('image/jpeg', 0.9);
-                link.download = `TriGrid_${Date.now()}.jpg`;
+                link.href = canvas.toDataURL('image/jpeg', 0.95);
+                link.download = `TriGrid_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.jpg`;
                 document.body.appendChild(link);
                 link.click();
                 document.body.removeChild(link);
@@ -438,22 +424,17 @@
         }
 
         function resetApp() {
+            // Clear images
+            document.querySelectorAll('.captured-img').forEach(el => el.remove());
             images = [null, null, null];
             currentSlot = 0;
-            
-            // Remove all images
-            document.querySelectorAll('.captured-img').forEach(el => el.remove());
-            
+
             uiResult.classList.add('hidden');
             uiControls.classList.remove('hidden');
             
             video.play();
             updateActiveSlot();
         }
-
-        // Init Icons
-        lucide.createIcons();
-
     </script>
 </body>
 </html>
