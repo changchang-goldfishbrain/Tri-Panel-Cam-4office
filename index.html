@@ -291,12 +291,12 @@
                 video.muted = true;
                 video.className = 'slot-content'; // object-fit: cover
                 
-                // 請求相機權限
+                // 請求相機權限 - 4K 解析度設定
                 const constraints = {
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1920 }, 
-                        height: { ideal: 1080 },
+                        width: { ideal: 4096 }, // Request 4K width
+                        height: { ideal: 2160 }, // Request 4K height
                         advanced: [{ focusMode: 'continuous' }]
                     },
                     audio: false
@@ -496,8 +496,8 @@
             
             const imgObjects = await Promise.all(images.map(src => loadImage(src)));
             
-            // 設定輸出寬度 1080px
-            const finalWidth = 1080;
+            // 設定輸出寬度 2160px (4K Quality)
+            const finalWidth = 2160;
             
             // 計算總高度
             let totalHeight = 0;
