@@ -47,6 +47,9 @@
             display: flex;
             align-items: center;
             justify-content: center;
+            /* Ensure dimensions are calculated correctly */
+            min-height: 0; 
+            min-width: 0;
         }
         .grid-slot:last-child {
             border-bottom: none;
@@ -57,7 +60,8 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            object-position: center center; /* Crucial for WYSIWYG */
+            /* CRITICAL: Must match the JS center-crop logic */
+            object-position: 50% 50%; 
             position: absolute;
             inset: 0;
             z-index: 10;
@@ -70,7 +74,7 @@
             width: 100%;
             height: 100%;
             object-fit: cover;
-            object-position: center center;
+            object-position: 50% 50%;
             position: absolute;
             inset: 0;
             z-index: 20;
@@ -79,7 +83,7 @@
 
         /* Active Slot Highlight & Guidelines */
         .slot-active {
-            box-shadow: inset 0 0 0 2px rgba(255, 215, 0, 0.5); /* Gold tint for active */
+            box-shadow: inset 0 0 0 2px rgba(255, 215, 0, 0.6); /* Gold tint for active */
         }
         
         /* Rule of thirds grid for active slot */
@@ -90,10 +94,10 @@
             pointer-events: none;
             z-index: 30;
             background-image: 
-                linear-gradient(to right, rgba(255,255,255,0.2) 1px, transparent 1px),
-                linear-gradient(to bottom, rgba(255,255,255,0.2) 1px, transparent 1px);
+                linear-gradient(to right, rgba(255,255,255,0.3) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255,255,255,0.3) 1px, transparent 1px);
             background-size: 33.33% 33.33%;
-            opacity: 0.5;
+            opacity: 0.6;
         }
 
         /* Animations */
@@ -149,6 +153,7 @@
     </div>
 
     <!-- Video Element (Detached initially) -->
+    <!-- Important: object-position center is enforced in CSS -->
     <video id="videoElement" autoplay playsinline muted style="display: none;"></video>
 
     <!-- UI Overlay -->
@@ -242,7 +247,7 @@
                 stream = await navigator.mediaDevices.getUserMedia({
                     video: {
                         facingMode: 'environment',
-                        width: { ideal: 1920 }, // High res for quality crop
+                        width: { ideal: 1920 }, 
                         height: { ideal: 1080 }
                     },
                     audio: false
@@ -298,6 +303,7 @@
             }
         }
 
+        // --- THE FIX: Aspect Ratio Matching Algorithm ---
         function capture() {
             if (currentSlot >= totalSlots) return;
 
@@ -309,42 +315,55 @@
             slotEl.appendChild(flash);
             setTimeout(() => flash.remove(), 300);
 
-            // 2. WYSIWYG Capture Logic
-            // We need to calculate exactly what portion of the video is visible in the slot.
-            // CSS object-fit: cover + object-position: center.
+            // 2. Logic: Center-Crop Aspect Ratio Match
+            // We ignore all CSS scaling values. We simply want to take a crop 
+            // from the center of the video that matches the Aspect Ratio of the slot.
+            
+            const vW = video.videoWidth;
+            const vH = video.videoHeight;
+            const sW = slotEl.clientWidth;
+            const sH = slotEl.clientHeight;
 
-            const videoW = video.videoWidth;
-            const videoH = video.videoHeight;
-            const slotW = slotEl.clientWidth;   // Inner width (no border)
-            const slotH = slotEl.clientHeight;  // Inner height
+            // Ratios
+            const videoAspect = vW / vH;
+            const slotAspect = sW / sH;
 
-            // Calculate the scaling factor CSS applied to the video
-            // Cover means the image is scaled so that BOTH dimensions are >= container
-            const scale = Math.max(slotW / videoW, slotH / videoH);
+            let renderW, renderH, startX, startY;
 
-            // The rendered size of the video in pixels on screen
-            const renderedW = videoW * scale;
-            const renderedH = videoH * scale;
+            if (slotAspect > videoAspect) {
+                // The slot is "wider" than the video (e.g. video is portrait, slot is square)
+                // OR video is landscape, but slot is extremely panoramic.
+                // We must fit to Width.
+                // Result: We capture full Video Width, and crop Video Height.
+                // WAIT: If Slot is Wider (larger ratio), we need to fit the Width of the video?
+                // Example: Slot 2:1 (2.0), Video 1:1 (1.0).
+                // To get a 2:1 crop from a 1:1 image, we use the full Width, 
+                // but only half the Height.
+                
+                renderW = vW;
+                renderH = vW / slotAspect;
+                startX = 0;
+                startY = (vH - renderH) / 2; // Center vertically
 
-            // Calculate how much of the video is "overflowing" (hidden)
-            // Since object-position is center, overflow is distributed evenly
-            const overflowX = (renderedW - slotW) / 2;
-            const overflowY = (renderedH - slotH) / 2;
-
-            // Map the visible area back to the Source Video Coordinates
-            // sourceX = overflowX / scale
-            const srcX = overflowX / scale;
-            const srcY = overflowY / scale;
-            const srcW = slotW / scale;
-            const srcH = slotH / scale;
+            } else {
+                // The slot is "taller" (or narrower) than the video.
+                // Example: Slot 9:16 (0.56), Video 16:9 (1.77).
+                // To get a tall crop from a wide video, we use the full Height,
+                // but only a narrow strip of Width.
+                
+                renderH = vH;
+                renderW = vH * slotAspect;
+                startX = (vW - renderW) / 2; // Center horizontally
+                startY = 0;
+            }
 
             // 3. Draw to Canvas
-            canvas.width = srcW;  // Or scale up for quality? Let's keep 1:1 with source
-            canvas.height = srcH;
-            const ctx = canvas.getContext('2d');
+            // We set the canvas to exactly match the crop resolution for maximum quality
+            canvas.width = renderW;
+            canvas.height = renderH;
             
-            // Draw only the visible portion
-            ctx.drawImage(video, srcX, srcY, srcW, srcH, 0, 0, srcW, srcH);
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, startX, startY, renderW, renderH, 0, 0, renderW, renderH);
 
             // 4. Save and Show
             const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
@@ -384,19 +403,17 @@
             });
 
             Promise.all(loadProms).then(imgs => {
-                // Calculate total dimensions
-                // To avoid jagged edges, we find the max width
+                // Create vertical strip
+                // We normalize all images to the width of the widest image
                 const maxW = Math.max(...imgs.map(i => i.naturalWidth));
-                // Total height is sum of heights (scaled to match max width if needed)
-                // Since slots are equal height in CSS, source crops should be similar, 
-                // but let's be safe and stack them exactly.
                 
+                // Calculate total height needed based on scaled images
                 let totalH = 0;
-                imgs.forEach(img => {
-                    // If image width < maxW, we need to scale height proportionally? 
-                    // No, assume full width fill.
+                const scaledHeights = imgs.map(img => {
                     const scale = maxW / img.naturalWidth;
-                    totalH += img.naturalHeight * scale;
+                    const h = img.naturalHeight * scale;
+                    totalH += h;
+                    return h;
                 });
 
                 canvas.width = maxW;
@@ -406,11 +423,10 @@
                 ctx.fillRect(0, 0, maxW, totalH);
 
                 let currentY = 0;
-                imgs.forEach(img => {
-                    const scale = maxW / img.naturalWidth;
-                    const drawH = img.naturalHeight * scale;
-                    ctx.drawImage(img, 0, currentY, maxW, drawH);
-                    currentY += drawH;
+                imgs.forEach((img, idx) => {
+                    const h = scaledHeights[idx];
+                    ctx.drawImage(img, 0, currentY, maxW, h);
+                    currentY += h;
                 });
 
                 // Download
